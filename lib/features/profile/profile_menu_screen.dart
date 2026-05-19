@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../../main.dart';
+import '../../app/app_strings.dart';
+import '../../services/auth_service.dart';
+import '../../services/api_service.dart';
+import '../../widgets/lokit_bottom_nav_bar.dart';
+
 import 'edit_profile_screen.dart';
 import '../shipping/shipping_address_screen.dart';
 import '../auth/change_password_screen.dart';
@@ -8,14 +14,6 @@ import '../legal/about_screen.dart';
 import '../legal/privacy_policy_screen.dart';
 import '../support/support_chat_screen.dart';
 import '../orders/my_orders_screen.dart';
-import '../../app/app_strings.dart';
-import '../../services/auth_service.dart';
-import '../../services/api_service.dart';
-
-import '../home/home_screen.dart';
-import '../products/search_screen.dart';
-import '../wishlist/wishlist_screen.dart';
-import '../cart/my_cart_screen.dart';
 
 class ProfileMenuScreen extends StatefulWidget {
   final String? userName;
@@ -83,7 +81,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
       } else {
         setState(() => _isLoadingProfile = false);
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() => _isLoadingProfile = false);
     }
@@ -162,6 +160,8 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                             children: [
                               Text(
                                 _name.isEmpty ? 'User' : _name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 15,
@@ -171,6 +171,8 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                               const SizedBox(height: 2),
                               Text(
                                 _email.isEmpty ? 'user@email.com' : _email,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: Color(0xFFCBD5E1),
                                   fontSize: 12,
@@ -202,6 +204,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
             ),
             Expanded(
               child: ListView(
+                padding: EdgeInsets.zero,
                 children: [
                   const SizedBox(height: 16),
 
@@ -482,87 +485,14 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 100),
+                  const SizedBox(height: 110),
                 ],
               ),
             ),
           ],
         ),
-        bottomNavigationBar: SafeArea(
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.07),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _BottomItem(
-                  icon: Icons.home_filled,
-                  label: 'Home',
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const HomeScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _BottomItem(
-                  icon: Icons.search,
-                  label: 'Search',
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SearchScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _BottomItem(
-                  icon: Icons.favorite_border,
-                  label: 'Wishlist',
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const WishlistScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _BottomItem(
-                  icon: Icons.shopping_bag_outlined,
-                  label: 'Cart',
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const MyCartScreen(),
-                      ),
-                    );
-                  },
-                ),
-                _BottomItem(
-                  icon: Icons.person,
-                  label: 'Profile',
-                  isActive: true,
-                  onTap: () {},
-                ),
-              ],
-            ),
-          ),
+        bottomNavigationBar: const LokitBottomNavBar(
+          currentTab: LokitBottomTab.profile,
         ),
       ),
     );
@@ -593,49 +523,6 @@ class _ProfileTile extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       dense: true,
       visualDensity: VisualDensity.compact,
-    );
-  }
-}
-
-class _BottomItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback? onTap;
-
-  const _BottomItem({
-    required this.icon,
-    required this.label,
-    this.isActive = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isActive ? Colors.black : Colors.grey;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: color,
-            size: 22,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: color,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

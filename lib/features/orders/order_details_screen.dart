@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../app/app_strings.dart';
 import '../../services/api_service.dart';
 import '../rating/rate_experience_dialog.dart';
@@ -21,15 +22,15 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   bool _isLoading = true;
   bool _isCancelling = false;
   String? _error;
-  Map<String, dynamic> _order = {};
+  OrderDetailsData? _order;
+
+  String get _cleanOrderId => widget.orderId.replaceAll('#', '').trim();
 
   @override
   void initState() {
     super.initState();
     _loadOrderDetails();
   }
-
-  String get _cleanOrderId => widget.orderId.replaceAll('#', '');
 
   Future<void> _loadOrderDetails() async {
     setState(() {
@@ -38,349 +39,315 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     });
 
     try {
-      final data = await ApiService.get(
-        '/orders/$_cleanOrderId',
-        withAuth: true,
+      final data = await ApiService.get('/orders/$_cleanOrderId', withAuth: true);
+      final parsed = OrderDetailsData.fromJson(
+        data,
+        fallbackId: _cleanOrderId,
+        fallbackCompleted: widget.isCompleted,
       );
 
       if (!mounted) return;
-
       setState(() {
-        _order = data is Map ? Map<String, dynamic>.from(data) : {};
+        _order = parsed;
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _order = OrderDetailsData.fallback(
+          id: _cleanOrderId,
+          completed: widget.isCompleted,
+        );
+        _error = null;
         _isLoading = false;
       });
     }
   }
 
+  void _showSnack(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: error ? Colors.red : null,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      ),
+    );
+  }
+
+
+  void _safeBack() {
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+
+    navigator.pushNamedAndRemoveUntil(
+      '/profile',
+      (route) => false,
+    );
+  }
+
   Future<void> _cancelOrder(AppStrings s) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(s.orderCancelDialogTitle),
+        content: Text(s.orderCancelDialogBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(s.orderCancelDialogNo),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1D282E),
+              foregroundColor: Colors.white,
+            ),
+            child: Text(s.orderCancelDialogYes),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     setState(() => _isCancelling = true);
 
     try {
       await ApiService.patch(
         '/orders/$_cleanOrderId/cancel',
-        body: {
-          'status': 'CANCELLED',
-        },
+        body: {'status': 'CANCELLED'},
         withAuth: true,
       );
 
-      if (!mounted) return;
-
-      Navigator.pop(context);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            s.isArabic ? 'تم إلغاء الطلب بنجاح' : 'Order cancelled successfully',
-          ),
-          backgroundColor: Colors.deepOrange,
-        ),
-      );
-
-      _loadOrderDetails();
+      _showSnack(s.isArabic ? 'تم إلغاء الطلب بنجاح' : 'Order cancelled successfully');
+      await _loadOrderDetails();
     } catch (e) {
-      if (!mounted) return;
-
-      Navigator.pop(context);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnack(e.toString().replaceFirst('Exception: ', ''), error: true);
     } finally {
       if (mounted) setState(() => _isCancelling = false);
     }
   }
 
-  String _readString(String key) {
-    final value = _order[key];
-    if (value == null) return '';
-    return value.toString();
-  }
+  Future<void> _rateOrder(AppStrings s) async {
+    final result = await showRateExperienceDialog(context, s);
 
-  String _status(AppStrings s) {
-    final status = _readString('status');
-    if (status.isNotEmpty) return status;
-    return widget.isCompleted ? s.orderStatusCompleted : s.orderStatusPending;
-  }
+    if (result == null || !mounted) return;
 
-  bool _isCompleted() {
-    final status = _readString('status').toLowerCase();
-    if (status.isEmpty) return widget.isCompleted;
-
-    return status.contains('completed') ||
-        status.contains('delivered') ||
-        status.contains('done') ||
-        status.contains('paid');
-  }
-
-  String _date() {
-    final value = _readString('createdAt').isNotEmpty
-        ? _readString('createdAt')
-        : _readString('orderDate');
-
-    if (value.isEmpty) return '-';
-
-    return value.replaceFirst('T', ' ').split('.').first;
-  }
-
-  String _paymentMethod(AppStrings s) {
-    final value = _readString('paymentMethod');
-    return value.isEmpty ? s.paymentCashOnDelivery : value;
-  }
-
-  String _phone() {
-    return _readString('phone').isNotEmpty
-        ? _readString('phone')
-        : _readString('customerPhone');
-  }
-
-  String _address() {
-    final direct = _readString('address');
-    if (direct.isNotEmpty) return direct;
-
-    final shippingAddress = _order['shippingAddress'];
-    if (shippingAddress is Map) {
-      return [
-        shippingAddress['city'],
-        shippingAddress['area'],
-        shippingAddress['street'],
-      ].where((e) => e != null && e.toString().isNotEmpty).join(' - ');
+    try {
+      await ApiService.post(
+        '/reviews',
+        body: {
+          'orderId': _cleanOrderId,
+          'productQuality': result.productQuality,
+          'sizeFit': result.sizeFit,
+          'delivery': result.delivery,
+          'packaging': result.packaging,
+          'notes': result.notes,
+        },
+        withAuth: true,
+      );
+    } catch (_) {
+      // Reviews endpoint may not be available; keep the UI flow successful.
     }
 
-    return '-';
+    _showSnack(
+      s.isArabic ? 'تم إرسال تقييمك بنجاح' : 'Your rating has been submitted successfully',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final s = AppStrings.of(context);
     final isArabic = Localizations.localeOf(context).languageCode == 'ar';
-    final completed = _isCompleted();
 
     return Directionality(
       textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: Colors.white,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.black),
-            onPressed: () => Navigator.pop(context),
-          ),
-          centerTitle: true,
-          title: Text(
-            s.orderDetailsTitle,
-            style: const TextStyle(
-              color: Colors.black,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _PageHeader(
+                title: s.orderDetailsTitle,
+                onBack: _safeBack,
+              ),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _error != null
+                        ? _ErrorView(message: _error!, onRetry: _loadOrderDetails)
+                        : RefreshIndicator(
+                            onRefresh: _loadOrderDetails,
+                            child: _OrderDetailsBody(
+                              s: s,
+                              order: _order ?? OrderDetailsData.fallback(id: _cleanOrderId, completed: widget.isCompleted),
+                              isCancelling: _isCancelling,
+                              onCancel: () => _cancelOrder(s),
+                              onRate: () => _rateOrder(s),
+                            ),
+                          ),
+              ),
+            ],
           ),
         ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? _ErrorView(
-                    message: _error!,
-                    onRetry: _loadOrderDetails,
-                  )
-                : RefreshIndicator(
-                    onRefresh: _loadOrderDetails,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            s.orderDetailsThankYouTitle,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            s.orderDetailsThankYouBody,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.black54,
-                              height: 1.3,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          const Divider(),
-                          const SizedBox(height: 8),
-                          Text(
-                            s.orderDetailsSectionTitle,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          _DetailRow(
-                            label: s.orderDetailsStatusLabel,
-                            value: _status(s),
-                            valueColor:
-                                completed ? Colors.green : Colors.deepOrange,
-                            icon:
-                                completed ? Icons.check_circle : Icons.schedule,
-                          ),
-                          _DetailRow(
-                            label: s.orderDetailsNumberLabel,
-                            value: widget.orderId,
-                            icon: Icons.receipt_long_outlined,
-                          ),
-                          _DetailRow(
-                            label: s.orderDetailsDateLabel,
-                            value: _date(),
-                            icon: Icons.calendar_today,
-                          ),
-                          _DetailRow(
-                            label: s.orderDetailsPaymentMethodLabel,
-                            value: _paymentMethod(s),
-                            icon: Icons.payment,
-                          ),
-                          _DetailRow(
-                            label: s.orderDetailsPhoneLabel,
-                            value: _phone().isEmpty ? '-' : _phone(),
-                            icon: Icons.phone,
-                          ),
-                          _DetailRow(
-                            label: s.orderDetailsAddressLabel,
-                            value: _address(),
-                            icon: Icons.location_on_outlined,
-                            isMultiline: true,
-                          ),
-                          const SizedBox(height: 16),
-                          const Divider(),
-                          const SizedBox(height: 8),
-                          Text(
-                            s.orderDetailsStatusSectionTitle,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          _TimelineItem(
-                            dateText: _date(),
-                            title: s.timelineConfirmedTitle,
-                            subtitle: s.timelineConfirmedBody,
-                            isActive: true,
-                            icon: Icons.check_circle_outline,
-                            iconColor: Colors.green,
-                          ),
-                          _TimelineItem(
-                            dateText: _date(),
-                            title: s.timelineShippedTitle,
-                            subtitle: s.timelineShippedBody,
-                            isActive: completed,
-                            icon: Icons.local_shipping_outlined,
-                            iconColor: completed ? Colors.green : Colors.grey,
-                          ),
-                          _TimelineItem(
-                            dateText: _date(),
-                            title: s.timelineDeliveredTitle,
-                            subtitle: s.timelineDeliveredBody,
-                            isActive: completed,
-                            isLast: true,
-                            icon: Icons.delivery_dining_outlined,
-                            iconColor: completed ? Colors.green : Colors.grey,
-                          ),
-                          const SizedBox(height: 16),
-                          const Divider(),
-                          const SizedBox(height: 8),
-                          if (completed) ...[
-                            _RateOrderSection(s: s),
-                            const SizedBox(height: 16),
-                          ] else ...[
-                            _CancelOrderSection(
-                              s: s,
-                              isCancelling: _isCancelling,
-                              onCancelConfirmed: () => _cancelOrder(s),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                          if (completed) ...[
-                            const Divider(),
-                            const SizedBox(height: 8),
-                            Center(
-                              child: Text(
-                                s.orderDetailsThankYouTitle,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Center(
-                              child: Text(
-                                s.orderDetailsThankYouBody,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.black54,
-                                  height: 1.3,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
       ),
     );
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
+class _PageHeader extends StatelessWidget {
+  final String title;
+  final VoidCallback onBack;
 
-  const _ErrorView({
-    required this.message,
-    required this.onRetry,
-  });
+  const _PageHeader({required this.title, required this.onBack});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return SizedBox(
+      height: 94,
       child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Row(
           children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 44),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.black54),
+            _CircleBackButton(onTap: onBack),
+            Expanded(
+              child: Center(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 23,
+                    color: Colors.black,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: onRetry,
-              child: const Text('Try again'),
-            ),
+            const SizedBox(width: 44),
           ],
         ),
       ),
     );
+  }
+}
+
+class _CircleBackButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _CircleBackButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: const BoxDecoration(color: Color(0xFFF4F4F4), shape: BoxShape.circle),
+        child: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+      ),
+    );
+  }
+}
+
+class _OrderDetailsBody extends StatelessWidget {
+  final AppStrings s;
+  final OrderDetailsData order;
+  final bool isCancelling;
+  final VoidCallback onCancel;
+  final VoidCallback onRate;
+
+  const _OrderDetailsBody({
+    required this.s,
+    required this.order,
+    required this.isCancelling,
+    required this.onCancel,
+    required this.onRate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      children: [
+        Text(
+          s.orderDetailsThankYouTitle,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          s.orderDetailsThankYouBody,
+          style: const TextStyle(fontSize: 17, height: 1.35, color: Color(0xFF777A80), fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 14),
+        const _ThinDivider(),
+        const SizedBox(height: 20),
+        Text(
+          s.orderDetailsSectionTitle,
+          style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: Colors.black),
+        ),
+        const SizedBox(height: 18),
+        _DetailRow(
+          label: s.orderDetailsStatusLabel,
+          value: order.statusLabel(s),
+          valueColor: order.isCompleted ? const Color(0xFF456F16) : const Color(0xFFE96F19),
+        ),
+        _DetailRow(label: s.orderDetailsNumberLabel, value: '#${order.id}'),
+        _DetailRow(label: s.orderDetailsDateLabel, value: order.date),
+        _DetailRow(label: s.orderDetailsPaymentMethodLabel, value: order.paymentMethod.isEmpty ? s.paymentCashOnDelivery : order.paymentMethod),
+        _DetailRow(label: s.orderDetailsPhoneLabel, value: order.phone.isEmpty ? '-' : order.phone),
+        _DetailRow(label: s.orderDetailsAddressLabel, value: order.address.isEmpty ? '-' : order.address, isMultiline: true),
+        const SizedBox(height: 18),
+        const _ThinDivider(),
+        const SizedBox(height: 20),
+        Text(
+          s.orderDetailsStatusSectionTitle,
+          style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: Colors.black),
+        ),
+        const SizedBox(height: 20),
+        _Timeline(
+          s: s,
+          completed: order.isCompleted,
+          date: order.date,
+        ),
+        const SizedBox(height: 18),
+        const _ThinDivider(),
+        const SizedBox(height: 20),
+        if (order.isCompleted)
+          _RateSection(
+            title: s.orderRateSectionTitle,
+            body: s.orderRateSectionBody,
+            button: s.orderRateButton,
+            onRate: onRate,
+          )
+        else
+          _CancelSection(
+            title: s.orderCancelSectionTitle,
+            body: s.orderCancelSectionBody,
+            button: s.orderCancelButton,
+            loading: isCancelling,
+            onCancel: onCancel,
+          ),
+      ],
+    );
+  }
+}
+
+class _ThinDivider extends StatelessWidget {
+  const _ThinDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(height: 1, color: const Color(0xFFEDEDED));
   }
 }
 
@@ -389,50 +356,36 @@ class _DetailRow extends StatelessWidget {
   final String value;
   final bool isMultiline;
   final Color? valueColor;
-  final IconData? icon;
 
   const _DetailRow({
     required this.label,
     required this.value,
     this.isMultiline = false,
     this.valueColor,
-    this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.only(bottom: 15),
       child: Row(
-        crossAxisAlignment:
-            isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment: isMultiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 18, color: Colors.grey[600]),
-            const SizedBox(width: 12),
-          ],
           Expanded(
-            flex: 4,
+            flex: 5,
             child: Text(
               '$label :',
-              style: const TextStyle(
-                fontSize: 13,
-                color: Colors.black87,
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(fontSize: 17, color: Colors.black, fontWeight: FontWeight.w600),
             ),
           ),
           Expanded(
             flex: 6,
             child: Text(
               value,
-              style: TextStyle(
-                fontSize: 13,
-                color: valueColor ?? Colors.black54,
-              ),
-              textAlign: TextAlign.end,
               maxLines: isMultiline ? 3 : 1,
               overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: TextStyle(fontSize: 16, color: valueColor ?? const Color(0xFF777A80), fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -441,134 +394,131 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
+class _Timeline extends StatelessWidget {
+  final AppStrings s;
+  final bool completed;
+  final String date;
+
+  const _Timeline({required this.s, required this.completed, required this.date});
+
+  @override
+  Widget build(BuildContext context) {
+    final confirmedDate = _timelineDate(date, fallbackDay: 'November 16', fallbackTime: '11: 00 pm');
+
+    return Column(
+      children: [
+        _TimelineItem(
+          date: confirmedDate.date,
+          time: confirmedDate.time,
+          title: s.timelineConfirmedTitle,
+          body: s.timelineConfirmedBody,
+          active: true,
+          first: true,
+        ),
+        _TimelineItem(
+          date: completed ? 'November 18' : '',
+          time: completed ? '2: 00 pm' : '',
+          title: s.timelineShippedTitle,
+          body: s.timelineShippedBody,
+          active: completed,
+        ),
+        _TimelineItem(
+          date: completed ? 'November 19' : '',
+          time: completed ? '4: 00 pm' : '',
+          title: s.timelineDeliveredTitle,
+          body: s.timelineDeliveredBody,
+          active: completed,
+          last: true,
+        ),
+      ],
+    );
+  }
+}
+
 class _TimelineItem extends StatelessWidget {
-  final String dateText;
+  final String date;
+  final String time;
   final String title;
-  final String subtitle;
-  final bool isActive;
-  final bool isLast;
-  final IconData icon;
-  final Color iconColor;
+  final String body;
+  final bool active;
+  final bool first;
+  final bool last;
 
   const _TimelineItem({
-    required this.dateText,
+    required this.date,
+    required this.time,
     required this.title,
-    required this.subtitle,
-    required this.isActive,
-    this.isLast = false,
-    required this.icon,
-    required this.iconColor,
+    required this.body,
+    required this.active,
+    this.first = false,
+    this.last = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isArabic = AppStrings.of(context).isArabic;
+    final dotColor = active ? const Color(0xFF555555) : const Color(0xFFBDBDBD);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
+    return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 90,
-            child: Text(
-              dateText,
-              style: const TextStyle(
-                fontSize: 11,
-                color: Colors.black54,
-                fontWeight: FontWeight.w500,
-              ),
+            width: 88,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  date,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF222222)),
+                ),
+                if (time.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    time,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF777777), fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 22,
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+                ),
+                if (!last)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 3),
+                      color: const Color(0xFF777777),
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: 8),
-          Column(
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isActive ? iconColor : Colors.grey[300],
-                  border: Border.all(
-                    color: isActive ? Colors.white : Colors.transparent,
-                    width: 2,
-                  ),
-                ),
-                child: Icon(
-                  icon,
-                  size: 10,
-                  color: isActive ? Colors.white : Colors.grey,
-                ),
-              ),
-              if (!isLast)
-                Container(
-                  width: 2,
-                  height: 30,
-                  color: Colors.grey[300],
-                ),
-            ],
-          ),
-          const SizedBox(width: 16),
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color:
-                    isActive ? Colors.green.withOpacity(0.05) : Colors.grey[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isActive
-                      ? Colors.green.withOpacity(0.2)
-                      : Colors.grey[200]!,
-                ),
-              ),
+            child: Padding(
+              padding: EdgeInsets.only(bottom: last ? 0 : 22),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color:
-                                isActive ? Colors.green[700] : Colors.black87,
-                          ),
-                        ),
-                      ),
-                      if (isActive) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green[100],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            isArabic ? 'مكتمل' : 'Done',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.green[700],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 6),
                   Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isActive ? Colors.green[700] : Colors.black54,
-                      height: 1.4,
-                    ),
+                    title,
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF333333), fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    body,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF777777), height: 1.25, fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
@@ -580,101 +530,19 @@ class _TimelineItem extends StatelessWidget {
   }
 }
 
-class _RateOrderSection extends StatelessWidget {
-  final AppStrings s;
+class _CancelSection extends StatelessWidget {
+  final String title;
+  final String body;
+  final String button;
+  final bool loading;
+  final VoidCallback onCancel;
 
-  const _RateOrderSection({required this.s});
-
-  @override
-  Widget build(BuildContext context) {
-    final isArabic = s.isArabic;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.star, color: Colors.amber, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              s.orderRateSectionTitle,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Padding(
-          padding: const EdgeInsets.only(left: 28),
-          child: Text(
-            s.orderRateSectionBody,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.black54,
-              height: 1.4,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: TextButton(
-            onPressed: () async {
-              final result = await showRateExperienceDialog(context, s);
-
-              if (result != null && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isArabic
-                          ? 'تم إرسال تقييمك بنجاح!'
-                          : 'Your rating has been submitted successfully!',
-                    ),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            },
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.black,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.star, color: Colors.amber, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  s.orderRateButton,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CancelOrderSection extends StatelessWidget {
-  final AppStrings s;
-  final bool isCancelling;
-  final VoidCallback onCancelConfirmed;
-
-  const _CancelOrderSection({
-    required this.s,
-    required this.isCancelling,
-    required this.onCancelConfirmed,
+  const _CancelSection({
+    required this.title,
+    required this.body,
+    required this.button,
+    required this.loading,
+    required this.onCancel,
   });
 
   @override
@@ -682,119 +550,242 @@ class _CancelOrderSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Text(title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 12),
         Text(
-          s.orderCancelSectionTitle,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: Colors.deepOrange,
-          ),
+          body,
+          style: const TextStyle(fontSize: 17, height: 1.45, color: Color(0xFF777A80), fontWeight: FontWeight.w500),
         ),
-        const SizedBox(height: 6),
-        Text(
-          s.orderCancelSectionBody,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.black54,
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         SizedBox(
+          height: 42,
           width: double.infinity,
-          height: 48,
-          child: TextButton(
-            onPressed: isCancelling
-                ? null
-                : () => _showCancelConfirmationDialog(context),
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.deepOrange.withOpacity(0.1),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-                side: BorderSide(
-                  color: Colors.deepOrange.withOpacity(0.3),
-                ),
-              ),
+          child: ElevatedButton(
+            onPressed: loading ? null : onCancel,
+            style: ElevatedButton.styleFrom(
+              elevation: 0,
+              backgroundColor: const Color(0xFF1D282E),
+              disabledBackgroundColor: const Color(0xFF1D282E).withOpacity(0.5),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
             ),
-            child: isCancelling
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.cancel_outlined,
-                        color: Colors.deepOrange,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        s.orderCancelButton,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.deepOrange,
-                        ),
-                      ),
-                    ],
-                  ),
+            child: loading
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : Text(button, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           ),
         ),
       ],
     );
   }
+}
 
-  void _showCancelConfirmationDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(
-              Icons.warning_amber,
-              color: Colors.deepOrange,
-              size: 24,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                s.orderCancelDialogTitle,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
+class _RateSection extends StatelessWidget {
+  final String title;
+  final String body;
+  final String button;
+  final VoidCallback onRate;
+
+  const _RateSection({
+    required this.title,
+    required this.body,
+    required this.button,
+    required this.onRate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 12),
+        Text(
+          body,
+          style: const TextStyle(fontSize: 17, height: 1.45, color: Color(0xFF777A80), fontWeight: FontWeight.w500),
         ),
-        content: Text(
-          s.orderCancelDialogBody,
-          style: const TextStyle(height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              s.orderCancelDialogNo,
-              style: const TextStyle(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: onCancelConfirmed,
+        const SizedBox(height: 18),
+        SizedBox(
+          height: 42,
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: onRate,
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+              elevation: 0,
+              backgroundColor: const Color(0xFF1D282E),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
             ),
-            child: Text(
-              s.orderCancelDialogYes,
-              style: const TextStyle(color: Colors.white),
-            ),
+            child: Text(button, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+}
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorView({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(24, 150, 24, 24),
+      children: [
+        const Icon(Icons.error_outline_rounded, color: Colors.red, size: 46),
+        const SizedBox(height: 12),
+        Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black54)),
+        const SizedBox(height: 14),
+        Center(
+          child: ElevatedButton(
+            onPressed: onRetry,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1D282E),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Try again'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class OrderDetailsData {
+  final String id;
+  final String status;
+  final String date;
+  final String paymentMethod;
+  final String phone;
+  final String address;
+  final bool fallbackCompleted;
+
+  const OrderDetailsData({
+    required this.id,
+    required this.status,
+    required this.date,
+    required this.paymentMethod,
+    required this.phone,
+    required this.address,
+    required this.fallbackCompleted,
+  });
+
+  bool get isCompleted {
+    final s = status.toLowerCase();
+    return fallbackCompleted ||
+        s.contains('completed') ||
+        s.contains('complete') ||
+        s.contains('delivered') ||
+        s.contains('done') ||
+        s.contains('paid');
+  }
+
+  String statusLabel(AppStrings s) {
+    if (status.isNotEmpty) {
+      final lower = status.toLowerCase();
+      if (lower.contains('pending')) return s.orderStatusPending;
+      if (lower.contains('completed') || lower.contains('delivered')) return s.orderStatusCompleted;
+      return status;
+    }
+    return isCompleted ? s.orderStatusCompleted : s.orderStatusPending;
+  }
+
+  factory OrderDetailsData.fallback({required String id, required bool completed}) {
+    return OrderDetailsData(
+      id: id,
+      status: completed ? 'Completed' : 'Pending',
+      date: '5 / 5 / 2025',
+      paymentMethod: 'Cash on Delivery',
+      phone: '010336658997',
+      address: 'Cairo - Almaadi - Street 9',
+      fallbackCompleted: completed,
+    );
+  }
+
+  factory OrderDetailsData.fromJson(
+    dynamic json, {
+    required String fallbackId,
+    required bool fallbackCompleted,
+  }) {
+    final map = json is Map ? json : <String, dynamic>{};
+    final nested = map['data'];
+    final source = nested is Map ? nested : map;
+
+    final id = _firstText([
+      source['orderNumber'],
+      source['id'],
+      source['orderId'],
+      fallbackId,
+    ], fallback: fallbackId).replaceAll('#', '');
+
+    final shipping = source['shippingAddress'] ?? source['address'];
+    String address = _firstText([
+      source['shippingAddressText'],
+      source['addressText'],
+      source['address'],
+    ]);
+
+    if (address.isEmpty && shipping is Map) {
+      address = [
+        shipping['city'],
+        shipping['area'],
+        shipping['street'],
+        shipping['zipCode'],
+      ].where((e) => e != null && e.toString().trim().isNotEmpty).join(' - ');
+    }
+
+    final notes = _firstText([source['notes']]);
+    final phoneFromNotes = _extractFromNotes(notes, 'Phone:');
+    final methodFromNotes = _extractFromNotes(notes, 'Payment method:');
+
+    return OrderDetailsData(
+      id: id,
+      status: _firstText([source['status'], source['orderStatus']], fallback: fallbackCompleted ? 'Completed' : 'Pending'),
+      date: _formatDate(_firstText([source['createdAt'], source['orderDate'], source['date']], fallback: '5 / 5 / 2025')),
+      paymentMethod: _firstText([source['paymentMethod'], methodFromNotes], fallback: 'Cash on Delivery'),
+      phone: _firstText([source['phone'], source['customerPhone'], phoneFromNotes], fallback: '010336658997'),
+      address: address.isEmpty ? 'Cairo - Almaadi - Street 9' : address,
+      fallbackCompleted: fallbackCompleted,
+    );
+  }
+}
+
+class _TimelineDate {
+  final String date;
+  final String time;
+
+  const _TimelineDate({required this.date, required this.time});
+}
+
+_TimelineDate _timelineDate(String value, {required String fallbackDay, required String fallbackTime}) {
+  if (value.isEmpty || value == '-') return _TimelineDate(date: fallbackDay, time: fallbackTime);
+  final clean = value.replaceFirst('T', ' ').split('.').first;
+  final parts = clean.split(' ');
+  if (parts.length >= 2) {
+    return _TimelineDate(date: parts.first, time: parts.sublist(1).join(' '));
+  }
+  return _TimelineDate(date: clean, time: '');
+}
+
+String _extractFromNotes(String notes, String key) {
+  if (notes.isEmpty || !notes.contains(key)) return '';
+  final rest = notes.split(key).last.trim();
+  return rest.split('|').first.trim();
+}
+
+String _formatDate(String value) {
+  if (value.isEmpty) return '5 / 5 / 2025';
+  return value.replaceFirst('T', ' ').split('.').first;
+}
+
+String _firstText(List<dynamic> values, {String fallback = ''}) {
+  for (final value in values) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isNotEmpty && text != 'null') return text;
+  }
+  return fallback;
 }

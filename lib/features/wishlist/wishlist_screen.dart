@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../app/app_strings.dart';
-import '../../services/wishlist_service.dart';
-import '../products/product_details_screen.dart';
 
-import '../home/home_screen.dart';
-import '../products/search_screen.dart';
-import '../cart/my_cart_screen.dart';
-import '../profile/profile_menu_screen.dart';
+import '../../app/app_strings.dart';
+import '../../services/product_service.dart';
+import '../../services/wishlist_service.dart';
+import '../../widgets/lokit_bottom_nav_bar.dart';
+import '../products/product_details_screen.dart';
 
 const String kBaseUrl = 'https://lokit-production.up.railway.app';
 
@@ -21,6 +19,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
   bool _isLoading = true;
   String? _error;
   List<dynamic> _wishlistItems = [];
+  final Map<int, String> _productImageUrls = {};
+  final Set<int> _removingProductIds = {};
 
   @override
   void initState() {
@@ -36,11 +36,15 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     try {
       final items = await WishlistService.getWishlist();
+      final imageUrls = await _loadProductImages(items);
 
       if (!mounted) return;
 
       setState(() {
         _wishlistItems = items;
+        _productImageUrls
+          ..clear()
+          ..addAll(imageUrls);
         _isLoading = false;
       });
     } catch (e) {
@@ -51,6 +55,36 @@ class _WishlistScreenState extends State<WishlistScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<Map<int, String>> _loadProductImages(List<dynamic> items) async {
+    final imageUrls = <int, String>{};
+
+    await Future.wait(
+      items.map((item) async {
+        final productId = _extractProductId(item);
+        if (productId == 0) return;
+
+        final directImage = _extractDirectImageUrl(item);
+        if (directImage != null && directImage.isNotEmpty) {
+          imageUrls[productId] = directImage;
+          return;
+        }
+
+        try {
+          final images = await ProductService.getProductImages(productId);
+          final apiImage = _extractImageUrlFromImages(images);
+
+          if (apiImage != null && apiImage.isNotEmpty) {
+            imageUrls[productId] = apiImage;
+          }
+        } catch (_) {
+          // Keep the card visible even if image loading fails.
+        }
+      }),
+    );
+
+    return imageUrls;
   }
 
   Future<void> _removeFromWishlist(dynamic item) async {
@@ -68,6 +102,12 @@ class _WishlistScreenState extends State<WishlistScreen> {
       return;
     }
 
+    if (_removingProductIds.contains(productId)) return;
+
+    setState(() {
+      _removingProductIds.add(productId);
+    });
+
     try {
       await WishlistService.removeFromWishlist(productId);
 
@@ -77,6 +117,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
         _wishlistItems.removeWhere(
           (element) => _extractProductId(element) == productId,
         );
+        _productImageUrls.remove(productId);
+        _removingProductIds.remove(productId);
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -89,6 +131,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
     } catch (e) {
       if (!mounted) return;
 
+      setState(() {
+        _removingProductIds.remove(productId);
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(e.toString().replaceFirst('Exception: ', '')),
@@ -100,18 +146,31 @@ class _WishlistScreenState extends State<WishlistScreen> {
   int _extractProductId(dynamic item) {
     if (item is! Map) return 0;
 
-    final product = item['product'];
+    final product = _productMap(item);
 
     final id = item['productId'] ??
         item['idProduct'] ??
         item['product_id'] ??
         item['productID'] ??
-        (product is Map ? product['id'] : null) ??
+        item['product_id_fk'] ??
+        (product is Map
+            ? product['id'] ??
+                product['productId'] ??
+                product['product_id'] ??
+                product['productID']
+            : null) ??
         item['id'];
 
     if (id is int) return id;
-
     return int.tryParse(id?.toString() ?? '') ?? 0;
+  }
+
+  String? _imageForItem(dynamic item) {
+    final productId = _extractProductId(item);
+    final directImage = _extractDirectImageUrl(item);
+
+    if (directImage != null && directImage.isNotEmpty) return directImage;
+    return _productImageUrls[productId];
   }
 
   @override
@@ -143,75 +202,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
             child: _buildBody(s),
           ),
         ),
-        bottomNavigationBar: SafeArea(
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.07),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _BottomItem(
-                  icon: Icons.home_filled,
-                  label: 'Home',
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const HomeScreen()),
-                    );
-                  },
-                ),
-                _BottomItem(
-                  icon: Icons.search,
-                  label: 'Search',
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SearchScreen()),
-                    );
-                  },
-                ),
-                _BottomItem(
-                  icon: Icons.favorite,
-                  label: 'Wishlist',
-                  isActive: true,
-                  onTap: () {},
-                ),
-                _BottomItem(
-                  icon: Icons.shopping_bag_outlined,
-                  label: 'Cart',
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const MyCartScreen()),
-                    );
-                  },
-                ),
-                _BottomItem(
-                  icon: Icons.person_outline,
-                  label: 'Profile',
-                  onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ProfileMenuScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
+        bottomNavigationBar: const LokitBottomNavBar(
+          currentTab: LokitBottomTab.wishlist,
         ),
       ),
     );
@@ -257,29 +249,12 @@ class _WishlistScreenState extends State<WishlistScreen> {
     }
 
     if (_wishlistItems.isEmpty) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          const SizedBox(height: 160),
-          const Icon(Icons.favorite_border, color: Colors.grey, size: 52),
-          const SizedBox(height: 12),
-          Center(
-            child: Text(
-              isArabic ? 'المفضلة فارغة' : 'Your wishlist is empty',
-              style: const TextStyle(
-                fontSize: 15,
-                color: Colors.black54,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      );
+      return _EmptyWishlistView(isArabic: isArabic);
     }
 
     return GridView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 90),
+      padding: const EdgeInsets.only(bottom: 100),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         childAspectRatio: 0.62,
@@ -294,6 +269,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
         return _WishlistCard(
           s: s,
           item: item,
+          imageUrl: _imageForItem(item),
+          isRemoving: _removingProductIds.contains(productId),
           onTap: () {
             if (productId == 0) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -315,11 +292,72 @@ class _WishlistScreenState extends State<WishlistScreen> {
               ),
             );
           },
-          onFavoriteToggle: () {
-            _removeFromWishlist(item);
-          },
+          onFavoriteToggle: () => _removeFromWishlist(item),
         );
       },
+    );
+  }
+}
+
+class _EmptyWishlistView extends StatelessWidget {
+  final bool isArabic;
+
+  const _EmptyWishlistView({required this.isArabic});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 150),
+        Center(
+          child: Container(
+            width: 86,
+            height: 86,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.favorite_border_rounded,
+              color: Colors.black38,
+              size: 42,
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Center(
+          child: Text(
+            isArabic ? 'Wishlist فاضية' : 'Your wishlist is empty',
+            style: const TextStyle(
+              fontSize: 17,
+              color: Colors.black87,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Center(
+          child: Text(
+            isArabic
+                ? 'ضيف المنتجات اللي بتحبها وهتظهر هنا'
+                : 'Add products you like and they will appear here',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Colors.black45,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -327,98 +365,69 @@ class _WishlistScreenState extends State<WishlistScreen> {
 class _WishlistCard extends StatelessWidget {
   final AppStrings s;
   final dynamic item;
+  final String? imageUrl;
+  final bool isRemoving;
   final VoidCallback onTap;
   final VoidCallback onFavoriteToggle;
 
   const _WishlistCard({
     required this.s,
     required this.item,
+    required this.imageUrl,
+    required this.isRemoving,
     required this.onTap,
     required this.onFavoriteToggle,
   });
 
-  dynamic get product {
-    if (item is Map && item['product'] is Map) {
-      return item['product'];
-    }
-    return item;
-  }
+  dynamic get product => _productMap(item) ?? item;
 
   String _readString(String key) {
-    if (product is Map && product[key] != null) {
-      return product[key].toString();
-    }
-
-    if (item is Map && item[key] != null) {
-      return item[key].toString();
-    }
-
-    return '';
+    final value = _readValue(product, key) ?? _readValue(item, key);
+    return value?.toString() ?? '';
   }
 
   String _name() {
-    final value = _readString('name').isNotEmpty
-        ? _readString('name')
-        : _readString('productName');
+    final value = _firstText([
+      _readString('name'),
+      _readString('productName'),
+      _readString('title'),
+    ]);
 
     return value.isEmpty ? s.wishlistProductName : value;
   }
 
   String _brand() {
-    final value = _readString('brandName').isNotEmpty
-        ? _readString('brandName')
-        : _readString('brand');
+    final value = _firstText([
+      _readString('brandName'),
+      _readString('brand'),
+      _nestedText(product, ['brand', 'name']),
+      _nestedText(product, ['brandResponse', 'name']),
+      _nestedText(item, ['brand', 'name']),
+      _nestedText(item, ['brandResponse', 'name']),
+    ]);
 
     return value.isEmpty ? s.wishlistBrand : value;
   }
 
   String _price() {
-    final value = _readString('price');
+    final value = _firstText([
+      _readString('price'),
+      _readString('minPrice'),
+      _readString('unitPrice'),
+      _readString('lowestPrice'),
+      _nestedText(item, ['variant', 'price']),
+      _nestedText(item, ['productVariant', 'price']),
+    ]);
 
     if (value.isNotEmpty && value != 'null') {
-      return '$value EGP';
+      return value.toLowerCase().contains('egp') ? value : '$value EGP';
     }
 
     return s.wishlistPriceExample;
   }
 
-  String? _imageUrl() {
-    final direct = _readString('imageUrl').isNotEmpty
-        ? _readString('imageUrl')
-        : _readString('mainImageUrl');
-
-    if (direct.isNotEmpty) return _fullImageUrl(direct);
-
-    final images = product is Map
-        ? product['images'] ?? product['productImages']
-        : null;
-
-    if (images is List && images.isNotEmpty) {
-      final first = images.first;
-
-      if (first is String) {
-        return _fullImageUrl(first);
-      }
-
-      if (first is Map) {
-        final url = first['imageUrl'] ??
-            first['url'] ??
-            first['imagePath'] ??
-            first['path'];
-
-        if (url != null) {
-          return _fullImageUrl(url.toString());
-        }
-      }
-    }
-
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final imageUrl = _imageUrl();
-
     return InkWell(
       borderRadius: BorderRadius.circular(22),
       onTap: onTap,
@@ -446,22 +455,20 @@ class _WishlistCard extends StatelessWidget {
                   child: SizedBox(
                     height: 175,
                     width: double.infinity,
-                    child: imageUrl == null || imageUrl.isEmpty
+                    child: imageUrl == null || imageUrl!.isEmpty
                         ? _imagePlaceholder()
                         : Image.network(
-                            imageUrl,
+                            imageUrl!,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) {
-                              return _imagePlaceholder();
-                            },
+                            errorBuilder: (_, __, ___) => _imagePlaceholder(),
                           ),
                   ),
                 ),
-                Positioned(
+                PositionedDirectional(
                   top: 10,
-                  right: 10,
+                  end: 10,
                   child: InkWell(
-                    onTap: onFavoriteToggle,
+                    onTap: isRemoving ? null : onFavoriteToggle,
                     borderRadius: BorderRadius.circular(18),
                     child: Container(
                       width: 34,
@@ -469,12 +476,24 @@ class _WishlistCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.95),
                         shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.06),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
-                      child: const Icon(
-                        Icons.favorite,
-                        color: Colors.red,
-                        size: 19,
-                      ),
+                      child: isRemoving
+                          ? const Padding(
+                              padding: EdgeInsets.all(9),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(
+                              Icons.favorite,
+                              color: Colors.red,
+                              size: 19,
+                            ),
                     ),
                   ),
                 ),
@@ -536,50 +555,137 @@ class _WishlistCard extends StatelessWidget {
       ),
     );
   }
-
-  String _fullImageUrl(String url) {
-    if (url.isEmpty) return '';
-    if (url.startsWith('http')) return url;
-    if (url.startsWith('/')) return '$kBaseUrl$url';
-    return '$kBaseUrl/$url';
-  }
 }
 
-class _BottomItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback? onTap;
+Map? _productMap(dynamic item) {
+  if (item is! Map) return null;
 
-  const _BottomItem({
-    required this.icon,
-    required this.label,
-    this.isActive = false,
-    this.onTap,
-  });
+  final product = item['product'] ??
+      item['productResponse'] ??
+      item['productDto'] ??
+      item['productDTO'] ??
+      item['productDetails'];
 
-  @override
-  Widget build(BuildContext context) {
-    final color = isActive ? Colors.black : Colors.grey;
+  return product is Map ? product : null;
+}
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: color,
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-            ),
-          ),
-        ],
-      ),
-    );
+String? _extractDirectImageUrl(dynamic item) {
+  final direct = _firstText([
+    _readValue(item, 'imageUrl')?.toString(),
+    _readValue(item, 'mainImageUrl')?.toString(),
+    _readValue(item, 'productImage')?.toString(),
+    _readValue(item, 'image')?.toString(),
+    _readValue(item, 'thumbnail')?.toString(),
+    _readValue(item, 'imagePath')?.toString(),
+    _readValue(item, 'path')?.toString(),
+    _readValue(item, 'url')?.toString(),
+  ]);
+
+  if (direct.isNotEmpty && direct != 'null') {
+    return _fullImageUrl(direct);
   }
+
+  final product = _productMap(item);
+  final productDirect = _firstText([
+    _readValue(product, 'imageUrl')?.toString(),
+    _readValue(product, 'mainImageUrl')?.toString(),
+    _readValue(product, 'productImage')?.toString(),
+    _readValue(product, 'image')?.toString(),
+    _readValue(product, 'thumbnail')?.toString(),
+    _readValue(product, 'imagePath')?.toString(),
+    _readValue(product, 'path')?.toString(),
+    _readValue(product, 'url')?.toString(),
+  ]);
+
+  if (productDirect.isNotEmpty && productDirect != 'null') {
+    return _fullImageUrl(productDirect);
+  }
+
+  final itemImageList = _readValue(item, 'images') ??
+      _readValue(item, 'productImages') ??
+      _readValue(item, 'imageUrls');
+  final listImage = _extractImageUrlFromImages(itemImageList);
+  if (listImage != null) return listImage;
+
+  final productImageList = _readValue(product, 'images') ??
+      _readValue(product, 'productImages') ??
+      _readValue(product, 'imageUrls');
+  return _extractImageUrlFromImages(productImageList);
+}
+
+String? _extractImageUrlFromImages(dynamic data) {
+  final images = _extractList(data);
+  if (images.isEmpty) return null;
+
+  final mainImage = images.firstWhere(
+    (image) {
+      if (image is! Map) return false;
+      return image['main'] == true ||
+          image['isMain'] == true ||
+          image['mainImage'] == true ||
+          image['primary'] == true;
+    },
+    orElse: () => images.first,
+  );
+
+  if (mainImage is String) return _fullImageUrl(mainImage);
+
+  if (mainImage is Map) {
+    final url = _firstText([
+      mainImage['imageUrl']?.toString(),
+      mainImage['mainImageUrl']?.toString(),
+      mainImage['url']?.toString(),
+      mainImage['imagePath']?.toString(),
+      mainImage['path']?.toString(),
+      mainImage['image']?.toString(),
+      mainImage['thumbnail']?.toString(),
+    ]);
+
+    if (url.isNotEmpty && url != 'null') return _fullImageUrl(url);
+  }
+
+  return null;
+}
+
+List<dynamic> _extractList(dynamic data) {
+  if (data is List) return data;
+  if (data is Map && data['content'] is List) return data['content'] as List;
+  if (data is Map && data['items'] is List) return data['items'] as List;
+  if (data is Map && data['data'] is List) return data['data'] as List;
+  if (data is Map && data['images'] is List) return data['images'] as List;
+  if (data is Map && data['productImages'] is List) {
+    return data['productImages'] as List;
+  }
+  return [];
+}
+
+dynamic _readValue(dynamic source, String key) {
+  return source is Map ? source[key] : null;
+}
+
+String _nestedText(dynamic source, List<String> path) {
+  dynamic current = source;
+
+  for (final key in path) {
+    if (current is! Map) return '';
+    current = current[key];
+  }
+
+  return current?.toString() ?? '';
+}
+
+String _firstText(List<String?> values) {
+  for (final value in values) {
+    final text = value?.trim() ?? '';
+    if (text.isNotEmpty && text != 'null') return text;
+  }
+  return '';
+}
+
+String _fullImageUrl(String url) {
+  final clean = url.trim();
+  if (clean.isEmpty || clean == 'null') return '';
+  if (clean.startsWith('http')) return clean;
+  if (clean.startsWith('/')) return '$kBaseUrl$clean';
+  return '$kBaseUrl/$clean';
 }

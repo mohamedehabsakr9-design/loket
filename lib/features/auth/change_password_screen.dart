@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../app/app_strings.dart';
 import '../../services/auth_service.dart';
 
@@ -17,8 +18,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   final TextEditingController _oldPasswordController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-      TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
 
   @override
   void dispose() {
@@ -28,42 +28,53 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     super.dispose();
   }
 
+  void _showMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : null,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      ),
+    );
+  }
+
   Future<void> _savePassword() async {
     final s = AppStrings.of(context);
     final oldPassword = _oldPasswordController.text.trim();
     final newPassword = _newPasswordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
 
-    // ✅ Fix: s.pleaseFillAllFields بدل pleaseFillAllFields
     if (oldPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.pleaseFillAllFields)),
-      );
+      _showMessage(s.pleaseFillAllFields, isError: true);
       return;
     }
 
-    // ✅ Fix: رسالة واضحة للـ passwords don't match
     if (newPassword != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match')),
+      _showMessage(
+        s.isArabic ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match',
+        isError: true,
       );
       return;
     }
 
     if (newPassword.length < 8) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Password must be at least 8 characters')),
+      _showMessage(
+        s.isArabic
+            ? 'كلمة المرور يجب أن تكون 8 أحرف على الأقل'
+            : 'Password must be at least 8 characters',
+        isError: true,
       );
       return;
     }
 
-    // ✅ Fix: التحقق إن الباسورد الجديد مختلف عن القديم
     if (oldPassword == newPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('New password must be different from old password')),
+      _showMessage(
+        s.isArabic
+            ? 'كلمة المرور الجديدة يجب أن تكون مختلفة عن القديمة'
+            : 'New password must be different from old password',
+        isError: true,
       );
       return;
     }
@@ -79,27 +90,21 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.passwordResetSuccessfully)),
-      );
-
+      _showMessage(s.passwordResetSuccessfully);
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
 
-      // ✅ Fix: رسالة خطأ أوضح — الغالب الباسورد القديم غلط
-      String errorMsg = 'Failed to change password';
-      if (e.toString().contains('403') ||
-          e.toString().contains('Forbidden') ||
-          e.toString().contains('wrong')) {
-        errorMsg = 'Old password is incorrect';
-      } else if (e.toString().contains('401')) {
-        errorMsg = 'Session expired, please login again';
+      final raw = e.toString();
+      String errorMsg = s.isArabic ? 'فشل تغيير كلمة المرور' : 'Failed to change password';
+
+      if (raw.contains('403') || raw.contains('Forbidden') || raw.toLowerCase().contains('wrong')) {
+        errorMsg = s.isArabic ? 'كلمة المرور الحالية غير صحيحة' : 'Old password is incorrect';
+      } else if (raw.contains('401')) {
+        errorMsg = s.isArabic ? 'انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى' : 'Session expired, please login again';
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMsg)),
-      );
+      _showMessage(errorMsg, isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -114,95 +119,110 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: Colors.white,
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black),
-            onPressed: _isLoading ? null : () => Navigator.pop(context),
-          ),
-          title: Text(
-            s.changePasswordTitle,
-            style: const TextStyle(color: Colors.black),
-          ),
-          centerTitle: true,
-          backgroundColor: Colors.white,
-          elevation: 0,
-        ),
-        body: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: Column(
-            children: [
-              _PasswordField(
-                controller: _oldPasswordController,
-                label: s.changePasswordOld,
-                obscure: _obscureOld,
-                onToggle: () => setState(() => _obscureOld = !_obscureOld),
-              ),
-              const SizedBox(height: 16),
-              _PasswordField(
-                controller: _newPasswordController,
-                label: s.changePasswordNew,
-                obscure: _obscureNew,
-                onToggle: () => setState(() => _obscureNew = !_obscureNew),
-              ),
-              const SizedBox(height: 16),
-              _PasswordField(
-                controller: _confirmPasswordController,
-                label: s.changePasswordConfirm,
-                obscure: _obscureConfirm,
-                onToggle: () =>
-                    setState(() => _obscureConfirm = !_obscureConfirm),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _savePassword,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    disabledBackgroundColor: Colors.black54,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+        body: Column(
+          children: [
+            _ProfilePageHeader(
+              title: s.changePasswordTitle,
+              onBack: _isLoading ? null : () => Navigator.pop(context),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 34, 24, 28),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 92,
+                      height: 92,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF4F4F4),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.lock_outline_rounded,
+                        color: Color(0xFF1D282E),
+                        size: 42,
+                      ),
                     ),
-                    elevation: 0,
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          s.changePasswordSave,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                    const SizedBox(height: 28),
+                    _PasswordInput(
+                      controller: _oldPasswordController,
+                      label: s.changePasswordOld,
+                      obscure: _obscureOld,
+                      enabled: !_isLoading,
+                      onToggle: () => setState(() => _obscureOld = !_obscureOld),
+                    ),
+                    const SizedBox(height: 18),
+                    _PasswordInput(
+                      controller: _newPasswordController,
+                      label: s.changePasswordNew,
+                      obscure: _obscureNew,
+                      enabled: !_isLoading,
+                      onToggle: () => setState(() => _obscureNew = !_obscureNew),
+                    ),
+                    const SizedBox(height: 18),
+                    _PasswordInput(
+                      controller: _confirmPasswordController,
+                      label: s.changePasswordConfirm,
+                      obscure: _obscureConfirm,
+                      enabled: !_isLoading,
+                      onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                    ),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _savePassword,
+                        style: ElevatedButton.styleFrom(
+                          elevation: 0,
+                          backgroundColor: const Color(0xFF1D282E),
+                          disabledBackgroundColor: const Color(0xFF1D282E).withOpacity(0.55),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(9),
                           ),
                         ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                s.changePasswordSave,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _PasswordField extends StatelessWidget {
+class _PasswordInput extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final bool obscure;
+  final bool enabled;
   final VoidCallback onToggle;
 
-  const _PasswordField({
+  const _PasswordInput({
     required this.controller,
     required this.label,
     required this.obscure,
+    required this.enabled,
     required this.onToggle,
   });
 
@@ -214,39 +234,108 @@ class _PasswordField extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 15,
+            fontSize: 18,
+            color: Color(0xFF4E5356),
             fontWeight: FontWeight.w500,
-            color: Colors.black87,
           ),
         ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: controller,
-          obscureText: obscure,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.lock_outline, color: Colors.black54),
-            suffixIcon: IconButton(
-              icon: Icon(
-                obscure ? Icons.visibility_off : Icons.visibility,
-                color: Colors.black54,
+        const SizedBox(height: 9),
+        SizedBox(
+          height: 52,
+          child: TextField(
+            controller: controller,
+            enabled: enabled,
+            obscureText: obscure,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(
+                Icons.lock_outline_rounded,
+                color: Color(0xFF777777),
               ),
-              onPressed: onToggle,
+              suffixIcon: IconButton(
+                onPressed: onToggle,
+                icon: Icon(
+                  obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: const Color(0xFF777777),
+                ),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFD0D0D0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFF1D282E), width: 1.3),
+              ),
+              disabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+              ),
             ),
-            filled: true,
-            fillColor: Colors.white,
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.black, width: 1.5),
-            ),
-            contentPadding:
-                const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ProfilePageHeader extends StatelessWidget {
+  final String title;
+  final VoidCallback? onBack;
+
+  const _ProfilePageHeader({required this.title, required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).padding.top + 104,
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top,
+        left: 24,
+        right: 24,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.black.withOpacity(0.05), width: 1),
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Material(
+              color: const Color(0xFFF4F4F4),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onBack,
+                child: const SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    size: 18,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: Colors.black,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

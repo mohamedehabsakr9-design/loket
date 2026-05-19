@@ -1,4 +1,3 @@
-// main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -10,11 +9,16 @@ import 'features/auth/sign_up_screen.dart' as register;
 import 'features/auth/forget_password_screen.dart';
 import 'features/auth/reset_password_screen.dart';
 import 'features/home/home_screen.dart';
-import 'core/api/api_client.dart'; // ← جديد
+import 'features/products/search_screen.dart';
+import 'features/wishlist/wishlist_screen.dart';
+import 'features/cart/my_cart_screen.dart';
+import 'features/profile/profile_menu_screen.dart';
+
+import 'core/api/api_client.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  ApiClient().init(); // ← جديد
+  ApiClient().init();
   runApp(const LokitApp());
 }
 
@@ -51,7 +55,10 @@ class _LokitAppState extends State<LokitApp> {
         fontFamily: 'Roboto',
       ),
       locale: _locale,
-      supportedLocales: const [Locale('en'), Locale('ar')],
+      supportedLocales: const [
+        Locale('en'),
+        Locale('ar'),
+      ],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -59,9 +66,13 @@ class _LokitAppState extends State<LokitApp> {
       ],
       localeResolutionCallback: (locale, supportedLocales) {
         if (locale == null) return supportedLocales.first;
-        for (final l in supportedLocales) {
-          if (l.languageCode == locale.languageCode) return l;
+
+        for (final supportedLocale in supportedLocales) {
+          if (supportedLocale.languageCode == locale.languageCode) {
+            return supportedLocale;
+          }
         }
+
         return supportedLocales.first;
       },
       home: const SplashLogoScreen(),
@@ -74,7 +85,13 @@ class _LokitAppState extends State<LokitApp> {
         '/reset-password': (context) => ResetPasswordScreen(
               email: ModalRoute.of(context)!.settings.arguments as String,
             ),
+
+        // Main tabs routes
         '/home': (_) => const HomeScreen(),
+        '/search': (_) => const SearchScreen(),
+        '/wishlist': (_) => const WishlistScreen(),
+        '/cart': (_) => const MyCartScreen(),
+        '/profile': (_) => const ProfileMenuScreen(),
       },
     );
   }
