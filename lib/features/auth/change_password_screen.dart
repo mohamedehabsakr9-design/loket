@@ -18,7 +18,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   final TextEditingController _oldPasswordController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
+  bool _isStrongPassword(String password) {
+    return RegExp(
+      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&.#_-])[A-Za-z\d@$!%*?&.#_-]{8,}$',
+    ).hasMatch(password);
+  }
 
   @override
   void dispose() {
@@ -34,7 +41,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         content: Text(message),
         backgroundColor: isError ? Colors.red : null,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
       ),
     );
@@ -42,28 +51,31 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   Future<void> _savePassword() async {
     final s = AppStrings.of(context);
+
     final oldPassword = _oldPasswordController.text.trim();
     final newPassword = _newPasswordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
 
-    if (oldPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+    if (oldPassword.isEmpty ||
+        newPassword.isEmpty ||
+        confirmPassword.isEmpty) {
       _showMessage(s.pleaseFillAllFields, isError: true);
+      return;
+    }
+
+    if (!_isStrongPassword(newPassword)) {
+      _showMessage(
+        s.isArabic
+            ? 'كلمة المرور يجب أن تحتوي على حرف كبير وحرف صغير ورقم ورمز خاص وتكون 8 أحرف على الأقل'
+            : 'Password must contain uppercase, lowercase, number and special character',
+        isError: true,
+      );
       return;
     }
 
     if (newPassword != confirmPassword) {
       _showMessage(
         s.isArabic ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match',
-        isError: true,
-      );
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      _showMessage(
-        s.isArabic
-            ? 'كلمة المرور يجب أن تكون 8 أحرف على الأقل'
-            : 'Password must be at least 8 characters',
         isError: true,
       );
       return;
@@ -96,12 +108,18 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       if (!mounted) return;
 
       final raw = e.toString();
-      String errorMsg = s.isArabic ? 'فشل تغيير كلمة المرور' : 'Failed to change password';
+      String errorMsg =
+          s.isArabic ? 'فشل تغيير كلمة المرور' : 'Failed to change password';
 
-      if (raw.contains('403') || raw.contains('Forbidden') || raw.toLowerCase().contains('wrong')) {
-        errorMsg = s.isArabic ? 'كلمة المرور الحالية غير صحيحة' : 'Old password is incorrect';
+      if (raw.contains('403') ||
+          raw.contains('Forbidden') ||
+          raw.toLowerCase().contains('wrong')) {
+        errorMsg =
+            s.isArabic ? 'كلمة المرور الحالية غير صحيحة' : 'Old password is incorrect';
       } else if (raw.contains('401')) {
-        errorMsg = s.isArabic ? 'انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى' : 'Session expired, please login again';
+        errorMsg = s.isArabic
+            ? 'انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى'
+            : 'Session expired, please login again';
       }
 
       _showMessage(errorMsg, isError: true);
@@ -144,30 +162,44 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       ),
                     ),
                     const SizedBox(height: 28),
+
                     _PasswordInput(
                       controller: _oldPasswordController,
                       label: s.changePasswordOld,
                       obscure: _obscureOld,
                       enabled: !_isLoading,
-                      onToggle: () => setState(() => _obscureOld = !_obscureOld),
+                      onToggle: () {
+                        setState(() => _obscureOld = !_obscureOld);
+                      },
                     ),
+
                     const SizedBox(height: 18),
+
                     _PasswordInput(
                       controller: _newPasswordController,
                       label: s.changePasswordNew,
                       obscure: _obscureNew,
                       enabled: !_isLoading,
-                      onToggle: () => setState(() => _obscureNew = !_obscureNew),
+                      showHelper: true,
+                      onToggle: () {
+                        setState(() => _obscureNew = !_obscureNew);
+                      },
                     ),
+
                     const SizedBox(height: 18),
+
                     _PasswordInput(
                       controller: _confirmPasswordController,
                       label: s.changePasswordConfirm,
                       obscure: _obscureConfirm,
                       enabled: !_isLoading,
-                      onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                      onToggle: () {
+                        setState(() => _obscureConfirm = !_obscureConfirm);
+                      },
                     ),
+
                     const SizedBox(height: 32),
+
                     SizedBox(
                       width: double.infinity,
                       height: 48,
@@ -176,7 +208,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         style: ElevatedButton.styleFrom(
                           elevation: 0,
                           backgroundColor: const Color(0xFF1D282E),
-                          disabledBackgroundColor: const Color(0xFF1D282E).withOpacity(0.55),
+                          disabledBackgroundColor:
+                              const Color(0xFF1D282E).withOpacity(0.55),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(9),
                           ),
@@ -216,6 +249,7 @@ class _PasswordInput extends StatelessWidget {
   final String label;
   final bool obscure;
   final bool enabled;
+  final bool showHelper;
   final VoidCallback onToggle;
 
   const _PasswordInput({
@@ -224,10 +258,13 @@ class _PasswordInput extends StatelessWidget {
     required this.obscure,
     required this.enabled,
     required this.onToggle,
+    this.showHelper = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isArabic = Localizations.localeOf(context).languageCode == 'ar';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -239,40 +276,29 @@ class _PasswordInput extends StatelessWidget {
             fontWeight: FontWeight.w500,
           ),
         ),
-        const SizedBox(height: 9),
-        SizedBox(
-          height: 52,
-          child: TextField(
-            controller: controller,
-            enabled: enabled,
-            obscureText: obscure,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(
-                Icons.lock_outline_rounded,
-                color: Color(0xFF777777),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          enabled: enabled,
+          obscureText: obscure,
+          textAlign: isArabic ? TextAlign.right : TextAlign.left,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.lock_outline),
+            suffixIcon: IconButton(
+              onPressed: enabled ? onToggle : null,
+              icon: Icon(
+                obscure ? Icons.visibility : Icons.visibility_off,
               ),
-              suffixIcon: IconButton(
-                onPressed: onToggle,
-                icon: Icon(
-                  obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                  color: const Color(0xFF777777),
-                ),
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFFD0D0D0)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFF1D282E), width: 1.3),
-              ),
-              disabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-              ),
+            ),
+            helperText: showHelper
+                ? '8+ chars, uppercase, lowercase, number & special char'
+                : null,
+            helperStyle: const TextStyle(
+              fontSize: 11,
+              color: Colors.black45,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
             ),
           ),
         ),
@@ -285,56 +311,38 @@ class _ProfilePageHeader extends StatelessWidget {
   final String title;
   final VoidCallback? onBack;
 
-  const _ProfilePageHeader({required this.title, required this.onBack});
+  const _ProfilePageHeader({
+    required this.title,
+    required this.onBack,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).padding.top + 104,
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top,
-        left: 24,
-        right: 24,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.black.withOpacity(0.05), width: 1),
-        ),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: Material(
-              color: const Color(0xFFF4F4F4),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: onBack,
-                child: const SizedBox(
-                  width: 42,
-                  height: 42,
-                  child: Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    size: 18,
-                    color: Colors.black,
-                  ),
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        height: 72,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back_ios_new_rounded),
+            ),
+            Expanded(
+              child: Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF1D282E),
                 ),
               ),
             ),
-          ),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Colors.black,
-            ),
-          ),
-        ],
+            const SizedBox(width: 48),
+          ],
+        ),
       ),
     );
   }

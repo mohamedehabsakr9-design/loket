@@ -19,6 +19,18 @@ class _SignInScreenState extends State<SignInScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
+  bool _isValidEmail(String email) {
+    return RegExp(
+      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+    ).hasMatch(email);
+  }
+
+  bool _isStrongPassword(String password) {
+    return RegExp(
+      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&.#_-])[A-Za-z\d@$!%*?&.#_-]{8,}$',
+    ).hasMatch(password);
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -30,13 +42,25 @@ class _SignInScreenState extends State<SignInScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
-      _showMessage('Please enter email and password');
+    if (email.isEmpty) {
+      _showMessage('Please enter your email');
       return;
     }
 
-    if (!email.contains('@')) {
+    if (!_isValidEmail(email)) {
       _showMessage('Please enter a valid email');
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showMessage('Please enter your password');
+      return;
+    }
+
+    if (!_isStrongPassword(password)) {
+      _showMessage(
+        'Password must contain uppercase, lowercase, number and special character',
+      );
       return;
     }
 
@@ -185,6 +209,12 @@ class _SignInScreenState extends State<SignInScreen> {
                           decoration: InputDecoration(
                             hintText: s.signInPasswordHint,
                             prefixIcon: const Icon(Icons.lock_outline),
+                            helperText:
+                                '8+ chars, uppercase, lowercase, number & special char',
+                            helperStyle: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.black45,
+                            ),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _obscurePassword

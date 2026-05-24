@@ -7,28 +7,45 @@ class ForgetPasswordScreen extends StatefulWidget {
   const ForgetPasswordScreen({super.key});
 
   @override
-  State<ForgetPasswordScreen> createState() => _ForgetPasswordScreenState();
+  State<ForgetPasswordScreen> createState() =>
+      _ForgetPasswordScreenState();
 }
 
-class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
-  final TextEditingController _emailController = TextEditingController();
+class _ForgetPasswordScreenState
+    extends State<ForgetPasswordScreen> {
+
+  final TextEditingController _emailController =
+      TextEditingController();
+
   bool _isLoading = false;
+
+  bool _isValidEmail(String email) {
+    return RegExp(
+      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+    ).hasMatch(email);
+  }
 
   Future<void> _sendResetEmail() async {
     final s = AppStrings.of(context);
+
     final email = _emailController.text.trim();
 
-    // ── التحقق من أن الحقل مش فاضي
+    // Empty validation
     if (email.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(s.pleaseFillAllFields))); // ✅ Fix
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(s.pleaseFillAllFields),
+        ),
+      );
       return;
     }
 
-    // ── التحقق البسيط من صيغة الإيميل
-    if (!email.contains('@') || !email.contains('.')) {
+    // Strong email validation
+    if (!_isValidEmail(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid email address')),
+        const SnackBar(
+          content: Text('Invalid email address'),
+        ),
       );
       return;
     }
@@ -36,31 +53,44 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final success = await AuthService.forgotPassword(email: email);
+      final success = await AuthService.forgotPassword(
+        email: email,
+      );
+
       if (!mounted) return;
 
       if (success) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(s.resetCodeSent)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(s.resetCodeSent)),
+        );
 
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ResetPasswordScreen(email: email),
+            builder: (_) =>
+                ResetPasswordScreen(email: email),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Email not found or server error')),
+          const SnackBar(
+            content:
+                Text('Email not found or server error'),
+          ),
         );
       }
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+        SnackBar(
+          content: Text('Error: $e'),
+        ),
       );
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -73,16 +103,20 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final s = AppStrings.of(context);
-    final isArabic = Localizations.localeOf(context).languageCode == 'ar';
+
+    final isArabic =
+        Localizations.localeOf(context).languageCode == 'ar';
 
     return Directionality(
-      textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection:
+          isArabic ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
         backgroundColor: const Color(0xFFEEEEEE),
         body: SafeArea(
           child: Column(
             children: [
-              // ── الجزء العلوي: الصورة فقط
+
+              // Top Image
               Expanded(
                 flex: 4,
                 child: Center(
@@ -97,7 +131,7 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
                 ),
               ),
 
-              // ── الجزء السفلي الأبيض مع زوايا مدوّرة في الأعلى
+              // Bottom White Container
               Expanded(
                 flex: 6,
                 child: Container(
@@ -109,12 +143,19 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
                       topRight: Radius.circular(32),
                     ),
                   ),
-                  padding: const EdgeInsets.fromLTRB(28, 36, 28, 24),
+                  padding: const EdgeInsets.fromLTRB(
+                    28,
+                    36,
+                    28,
+                    24,
+                  ),
                   child: SingleChildScrollView(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
                       children: [
-                        // ── العنوان
+
+                        // Title
                         const Text(
                           'Forget Password',
                           style: TextStyle(
@@ -126,7 +167,7 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
 
                         const SizedBox(height: 28),
 
-                        // ── لابيل Email
+                        // Email Label
                         const Text(
                           'Email',
                           style: TextStyle(
@@ -138,61 +179,94 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
 
                         const SizedBox(height: 8),
 
-                        // ── حقل الإيميل
+                        // Email Field
                         TextField(
                           controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          textAlign:
-                              isArabic ? TextAlign.right : TextAlign.left,
+                          keyboardType:
+                              TextInputType.emailAddress,
+                          textAlign: isArabic
+                              ? TextAlign.right
+                              : TextAlign.left,
                           decoration: InputDecoration(
                             hintTextDirection: isArabic
                                 ? TextDirection.rtl
                                 : TextDirection.ltr,
+
+                            hintText:
+                                'example@gmail.com',
+
                             prefixIcon: const Icon(
                               Icons.email_outlined,
                               color: Colors.black54,
                             ),
+
                             filled: true,
                             fillColor: Colors.white,
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+
+                            enabledBorder:
+                                OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(10),
                               borderSide: BorderSide(
-                                color: Colors.grey.shade300,
+                                color:
+                                    Colors.grey.shade300,
                               ),
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(
+
+                            focusedBorder:
+                                OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(10),
+                              borderSide:
+                                  const BorderSide(
                                 color: Colors.black,
                                 width: 1.5,
                               ),
                             ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 16, horizontal: 12),
+
+                            contentPadding:
+                                const EdgeInsets.symmetric(
+                              vertical: 16,
+                              horizontal: 12,
+                            ),
                           ),
                         ),
 
                         const SizedBox(height: 32),
 
-                        // ── زر Send
+                        // Send Button
                         SizedBox(
                           height: 52,
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: _isLoading ? null : _sendResetEmail,
+                            onPressed: _isLoading
+                                ? null
+                                : _sendResetEmail,
+
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.black,
-                              disabledBackgroundColor: Colors.black54,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                              backgroundColor:
+                                  Colors.black,
+
+                              disabledBackgroundColor:
+                                  Colors.black54,
+
+                              shape:
+                                  RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(
+                                  12,
+                                ),
                               ),
+
                               elevation: 0,
                             ),
+
                             child: _isLoading
                                 ? const SizedBox(
                                     width: 22,
                                     height: 22,
-                                    child: CircularProgressIndicator(
+                                    child:
+                                        CircularProgressIndicator(
                                       strokeWidth: 2,
                                       color: Colors.white,
                                     ),
@@ -201,7 +275,8 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
                                     'Send',
                                     style: TextStyle(
                                       fontSize: 16,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight:
+                                          FontWeight.w600,
                                       color: Colors.white,
                                     ),
                                   ),
@@ -210,29 +285,43 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
 
                         const SizedBox(height: 20),
 
-                        // ── رابط Remember / Sign In
+                        // Remember Password
                         Center(
                           child: GestureDetector(
-                            onTap: () => Navigator.pop(context),
+                            onTap: () =>
+                                Navigator.pop(context),
+
                             child: Text.rich(
                               TextSpan(
-                                text: s.forgetPasswordRemember,
+                                text: s
+                                    .forgetPasswordRemember,
+
                                 style: const TextStyle(
                                   color: Colors.black54,
                                   fontSize: 14,
                                 ),
+
                                 children: [
                                   TextSpan(
-                                    text: s.forgetPasswordSignIn,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      decoration: TextDecoration.underline,
+                                    text: s
+                                        .forgetPasswordSignIn,
+
+                                    style:
+                                        const TextStyle(
+                                      fontWeight:
+                                          FontWeight.bold,
+                                      decoration:
+                                          TextDecoration
+                                              .underline,
+
                                       color: Colors.black,
                                     ),
                                   ),
                                 ],
                               ),
-                              textAlign: TextAlign.center,
+
+                              textAlign:
+                                  TextAlign.center,
                             ),
                           ),
                         ),

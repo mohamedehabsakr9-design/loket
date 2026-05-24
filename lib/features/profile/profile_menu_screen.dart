@@ -15,7 +15,6 @@ import '../legal/privacy_policy_screen.dart';
 import '../support/support_chat_screen.dart';
 import '../orders/my_orders_screen.dart';
 
-
 class ProfileMenuScreen extends StatefulWidget {
   final String? userName;
   final String? userEmail;
@@ -222,9 +221,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                     onTap: () async {
                       await Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const EditProfileScreen(),
-                        ),
+                        MaterialPageRoute(builder: (_) => const SearchScreen()),
                       );
 
                       _loadProfile();

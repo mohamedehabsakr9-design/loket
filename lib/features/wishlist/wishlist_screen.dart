@@ -4,6 +4,7 @@ import '../../app/app_strings.dart';
 import '../../services/product_service.dart';
 import '../../services/wishlist_service.dart';
 import '../../widgets/lokit_bottom_nav_bar.dart';
+import '../../widgets/product_card.dart';
 import '../products/product_details_screen.dart';
 
 const String kBaseUrl = 'https://lokit-production.up.railway.app';
@@ -257,8 +258,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
       padding: const EdgeInsets.only(bottom: 100),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 0.62,
-        mainAxisSpacing: 14,
+        childAspectRatio: 0.52,
+        mainAxisSpacing: 22,
         crossAxisSpacing: 14,
       ),
       itemCount: _wishlistItems.length,
@@ -269,6 +270,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
         return _WishlistCard(
           s: s,
           item: item,
+          productId: productId,
           imageUrl: _imageForItem(item),
           isRemoving: _removingProductIds.contains(productId),
           onTap: () {
@@ -365,6 +367,7 @@ class _EmptyWishlistView extends StatelessWidget {
 class _WishlistCard extends StatelessWidget {
   final AppStrings s;
   final dynamic item;
+  final int productId;
   final String? imageUrl;
   final bool isRemoving;
   final VoidCallback onTap;
@@ -373,6 +376,7 @@ class _WishlistCard extends StatelessWidget {
   const _WishlistCard({
     required this.s,
     required this.item,
+    required this.productId,
     required this.imageUrl,
     required this.isRemoving,
     required this.onTap,
@@ -428,122 +432,20 @@ class _WishlistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(22),
+    return ProductCard(
+      productId: productId,
+      name: _name(),
+      brand: _brand(),
+      price: _price(),
+      imageUrl: imageUrl,
+      isFavorite: true,
+      isWishlistLoading: isRemoving,
+      onWishlistTap: () {
+        if (!isRemoving) {
+          onFavoriteToggle();
+        }
+      },
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(22),
-                  ),
-                  child: SizedBox(
-                    height: 175,
-                    width: double.infinity,
-                    child: imageUrl == null || imageUrl!.isEmpty
-                        ? _imagePlaceholder()
-                        : Image.network(
-                            imageUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _imagePlaceholder(),
-                          ),
-                  ),
-                ),
-                PositionedDirectional(
-                  top: 10,
-                  end: 10,
-                  child: InkWell(
-                    onTap: isRemoving ? null : onFavoriteToggle,
-                    borderRadius: BorderRadius.circular(18),
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.95),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.06),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: isRemoving
-                          ? const Padding(
-                              padding: EdgeInsets.all(9),
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(
-                              Icons.favorite,
-                              color: Colors.red,
-                              size: 19,
-                            ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _brand(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Expanded(
-                      child: Text(
-                        _name(),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          height: 1.25,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _price(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

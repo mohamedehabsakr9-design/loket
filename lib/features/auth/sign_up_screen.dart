@@ -24,6 +24,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final TextEditingController _confirmPasswordController =
       TextEditingController();
 
+  bool _isValidEmail(String email) {
+    return RegExp(
+      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+    ).hasMatch(email);
+  }
+
+  bool _isStrongPassword(String password) {
+    return RegExp(
+      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&.#_-])[A-Za-z\d@$!%*?&.#_-]{8,}$',
+    ).hasMatch(password);
+  }
+
   @override
   void dispose() {
     _firstNameController.dispose();
@@ -55,7 +67,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    if (!email.contains('@') || !email.contains('.')) {
+    if (!_isValidEmail(email)) {
       _showMessage('Invalid email address');
       return;
     }
@@ -65,8 +77,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    if (password.length < 8) {
-      _showMessage('Password must be at least 8 characters');
+    if (!_isStrongPassword(password)) {
+      _showMessage(
+        'Password must contain uppercase, lowercase, number and special character',
+      );
       return;
     }
 
@@ -273,7 +287,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           decoration: InputDecoration(
                             hintText: s.signUpPassword,
                             prefixIcon: const Icon(Icons.lock_outline),
-                            helperText: 'At least 8 characters',
+                            helperText:
+                                '8+ chars, uppercase, lowercase, number & special char',
                             helperStyle: const TextStyle(
                               fontSize: 11,
                               color: Colors.black45,
