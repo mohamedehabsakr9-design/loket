@@ -40,10 +40,10 @@ flutter:
     - lib/assets/Group 3.png
     - lib/assets/Group 1171278176.png
     - lib/assets/rafiki.png
-    - lib/assets/icon .png
+    - lib/assets/icon.png
 
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "lib/assets/icon .png"
+  image_path: "assets/icon.png"
   min_sdk_android: 21

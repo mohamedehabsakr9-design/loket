@@ -5,16 +5,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app/api_constants.dart';
 
 class ApiService {
+  // ⚠️ NO Content-Type in BaseOptions — set per-request so:
+  //   1) multipart can omit it (Dio sets boundary automatically)
+  //   2) Authorization header merges correctly in all Dio versions
   static final Dio _dio = Dio(
     BaseOptions(
       baseUrl: ApiConstants.baseUrl,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 30),
-      validateStatus: (status) => status != null && status < 500,
+      validateStatus: (status) => status != null && status < 600,
     ),
   );
 
@@ -40,27 +39,34 @@ class ApiService {
     await prefs.remove('accessToken');
   }
 
-  static Future<Options> _options({bool withAuth = false}) async {
+  // ── Build options per-request ─────────────────────────────────────────────
+  static Future<Options> _options({
+    bool withAuth = false,
+    bool isMultipart = false,
+  }) async {
     final headers = <String, String>{
-      'Content-Type': 'application/json',
       'Accept': 'application/json',
+      // Only set Content-Type for JSON — multipart sets its own with boundary
+      if (!isMultipart) 'Content-Type': 'application/json',
     };
 
     if (withAuth) {
       final token = await getToken();
-
       if (kDebugMode) {
-        debugPrint('Has Token: ${token != null && token.isNotEmpty}');
+        debugPrint('[ApiService] Has Token: ${token != null && token.isNotEmpty}');
       }
-
       if (token != null && token.isNotEmpty) {
-        final clean = token.replaceFirst('Bearer ', '').trim();
-        headers['Authorization'] = 'Bearer $clean';
+        headers['Authorization'] = 'Bearer $token';
+        if (kDebugMode) debugPrint('[ApiService] Authorization header set ✅');
+      } else {
+        if (kDebugMode) debugPrint('[ApiService] ⚠️ No token — request will be 401');
       }
     }
 
     return Options(headers: headers);
   }
+
+  // ── HTTP verbs ─────────────────────────────────────────────────────────────
 
   static Future<dynamic> get(
     String endpoint, {
@@ -85,16 +91,12 @@ class ApiService {
     bool withAuth = false,
   }) async {
     try {
-      if (kDebugMode) {
-        debugPrint('POST $endpoint');
-      }
-
+      if (kDebugMode) debugPrint('[ApiService] POST $endpoint body: $body');
       final response = await _dio.post(
         endpoint,
         data: body,
         options: await _options(withAuth: withAuth),
       );
-
       return _handleResponse(response);
     } on DioException catch (e) {
       throw Exception(_dioErrorMessage(e));
@@ -152,83 +154,60 @@ class ApiService {
     }
   }
 
+  // ── Multipart — used by Try-On (NO Content-Type override, auth included) ──
   static Future<dynamic> postMultipart(
     String path, {
     required FormData formData,
     Map<String, dynamic>? queryParameters,
-    Duration receiveTimeout = const Duration(seconds: 180),
+    Duration receiveTimeout = const Duration(seconds: 240),
   }) async {
     try {
-      final token = await getToken();
-      final cleanToken = token?.replaceFirst('Bearer ', '').trim();
+      final opts = await _options(withAuth: true, isMultipart: true);
+      opts.receiveTimeout = receiveTimeout;
 
+      if (kDebugMode) debugPrint('[ApiService] POST multipart $path');
       final response = await _dio.post(
         path,
         data: formData,
         queryParameters: queryParameters,
-        options: Options(
-          headers: {
-            'Accept': 'application/json',
-            if (cleanToken != null && cleanToken.isNotEmpty)
-              'Authorization': 'Bearer $cleanToken',
-          },
-          contentType: 'multipart/form-data',
-          validateStatus: (s) => s != null && s < 600,
-          receiveTimeout: receiveTimeout,
-        ),
+        options: opts,
       );
-
       return _handleResponse(response);
     } on DioException catch (e) {
       throw Exception(_dioErrorMessage(e));
     }
   }
 
+  // ── Response handler ───────────────────────────────────────────────────────
+
   static dynamic _handleResponse(Response response) {
     final statusCode = response.statusCode ?? 0;
     final body = response.data;
 
     if (kDebugMode) {
-      debugPrint('STATUS: $statusCode');
-      debugPrint('URL: ${response.realUri}');
-
+      debugPrint('[ApiService] STATUS: $statusCode  URL: ${response.realUri}');
       if (body is List) {
-        debugPrint('BODY TYPE: List (${body.length} items)');
+        debugPrint('[ApiService] BODY: List(${body.length})');
       } else if (body is Map) {
-        debugPrint('BODY TYPE: Map (${body.keys.length} keys)');
-      } else if (body == null) {
-        debugPrint('BODY TYPE: null');
+        debugPrint('[ApiService] BODY: Map(${body.keys.length} keys)');
       } else {
-        debugPrint('BODY TYPE: ${body.runtimeType}');
+        debugPrint('[ApiService] BODY: $body');
       }
     }
 
-    if (statusCode >= 200 && statusCode < 300) {
-      return body;
-    }
+    if (statusCode >= 200 && statusCode < 300) return body;
 
-    String errorMessage = 'Request failed: $statusCode';
-
-    if (statusCode == 401) {
-      errorMessage = 'Unauthorized. Please login again.';
-    } else if (statusCode == 403) {
-      errorMessage = 'Forbidden. You do not have permission.';
-    } else if (statusCode == 404) {
-      errorMessage = 'Not found.';
-    } else if (statusCode >= 500) {
-      errorMessage = 'Server error. Please try again later.';
-    }
+    String errorMessage = 'Request failed ($statusCode)';
+    if (statusCode == 401) errorMessage = 'Session expired. Please login again.';
+    else if (statusCode == 403) errorMessage = 'You do not have permission for this action.';
+    else if (statusCode == 404) errorMessage = 'Not found.';
+    else if (statusCode == 400 || statusCode == 422) errorMessage = 'Invalid request data.';
+    else if (statusCode >= 500) errorMessage = 'Server error. Please try again later.';
 
     if (body is Map) {
-      final msg = body['message'] ??
-          body['error'] ??
-          body['msg'] ??
-          body['detail'] ??
-          body['errors'];
-
-      if (msg != null) {
-        errorMessage = msg.toString();
-      }
+      final msg = body['message'] ?? body['error'] ?? body['msg'] ??
+          body['detail'] ?? body['errors'];
+      if (msg != null) errorMessage = msg.toString();
     } else if (body != null && body.toString().length < 300) {
       errorMessage = body.toString();
     }
@@ -237,23 +216,20 @@ class ApiService {
   }
 
   static String _dioErrorMessage(DioException e) {
-    final response = e.response;
-
-    if (response != null) {
+    if (e.response != null) {
       try {
-        _handleResponse(response);
+        _handleResponse(e.response!);
       } catch (err) {
         return err.toString().replaceFirst('Exception: ', '');
       }
     }
-
     switch (e.type) {
       case DioExceptionType.connectionTimeout:
         return 'Connection timeout. Check your internet.';
       case DioExceptionType.receiveTimeout:
-        return 'Receive timeout. Try again.';
+        return 'The server took too long to respond. Try again.';
       case DioExceptionType.sendTimeout:
-        return 'Send timeout. Try again.';
+        return 'Upload timeout. Try again.';
       case DioExceptionType.connectionError:
         return 'Connection error. Check your internet.';
       case DioExceptionType.cancel:

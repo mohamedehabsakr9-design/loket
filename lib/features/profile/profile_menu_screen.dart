@@ -15,6 +15,7 @@ import '../legal/privacy_policy_screen.dart';
 import '../support/support_chat_screen.dart';
 import '../orders/my_orders_screen.dart';
 
+
 class ProfileMenuScreen extends StatefulWidget {
   final String? userName;
   final String? userEmail;
@@ -54,10 +55,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
 
   Future<void> _loadProfile() async {
     try {
-      final data = await ApiService.get(
-        '/account',
-        withAuth: true,
-      );
+      final data = await ApiService.get('/account', withAuth: true);
 
       if (!mounted) return;
 
@@ -134,7 +132,8 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                   CircleAvatar(
                     radius: 26,
                     backgroundColor: Colors.white,
-                    backgroundImage: _avatarUrl != null && _avatarUrl!.isNotEmpty
+                    backgroundImage:
+                        _avatarUrl != null && _avatarUrl!.isNotEmpty
                         ? NetworkImage(_avatarUrl!)
                         : null,
                     child: _avatarUrl == null || _avatarUrl!.isEmpty
@@ -150,10 +149,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                     child: _isLoadingProfile
                         ? const Text(
                             'Loading...',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
+                            style: TextStyle(color: Colors.white, fontSize: 14),
                           )
                         : Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,9 +303,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const AboutScreen(),
-                        ),
+                        MaterialPageRoute(builder: (_) => const AboutScreen()),
                       );
                     },
                   ),
@@ -349,15 +343,9 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                               });
 
                               if (value == 'English') {
-                                LokitApp.setLocale(
-                                  context,
-                                  const Locale('en'),
-                                );
+                                LokitApp.setLocale(context, const Locale('en'));
                               } else {
-                                LokitApp.setLocale(
-                                  context,
-                                  const Locale('ar'),
-                                );
+                                LokitApp.setLocale(context, const Locale('ar'));
                               }
                             },
                             itemBuilder: (context) => const [
@@ -378,10 +366,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                                   style: const TextStyle(fontSize: 13),
                                 ),
                                 const SizedBox(width: 4),
-                                const Icon(
-                                  Icons.keyboard_arrow_down,
-                                  size: 18,
-                                ),
+                                const Icon(Icons.keyboard_arrow_down, size: 18),
                               ],
                             ),
                           ),
@@ -412,10 +397,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                       height: 52,
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.auto_awesome,
-                            color: Colors.black54,
-                          ),
+                          const Icon(Icons.auto_awesome, color: Colors.black54),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
@@ -461,10 +443,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Icon(
-                                Icons.logout,
-                                color: Colors.white,
-                              ),
+                            : const Icon(Icons.logout, color: Colors.white),
                         label: Text(
                           _isLoggingOut ? 'Logging out...' : s.profileLogout,
                           style: const TextStyle(color: Colors.white),
@@ -504,20 +483,13 @@ class _ProfileTile extends StatelessWidget {
   final String title;
   final VoidCallback? onTap;
 
-  const _ProfileTile({
-    required this.icon,
-    required this.title,
-    this.onTap,
-  });
+  const _ProfileTile({required this.icon, required this.title, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
       leading: Icon(icon, color: Colors.black54),
-      title: Text(
-        title,
-        style: const TextStyle(fontSize: 14),
-      ),
+      title: Text(title, style: const TextStyle(fontSize: 14)),
       trailing: const Icon(Icons.chevron_right, size: 20),
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
