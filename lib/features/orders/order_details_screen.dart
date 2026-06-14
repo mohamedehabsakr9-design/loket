@@ -322,14 +322,17 @@ class _OrderDetailsBody extends StatelessWidget {
         const SizedBox(height: 18),
         const _ThinDivider(),
         const SizedBox(height: 20),
-        if (order.isCompleted)
-          _RateSection(
-            title: s.orderRateSectionTitle,
-            body: s.orderRateSectionBody,
-            button: s.orderRateButton,
-            onRate: onRate,
-          )
-        else
+        // Rate Experience يظهر دايمًا للتجربة
+        _RateSection(
+          title: s.orderRateSectionTitle,
+          body: s.orderRateSectionBody,
+          button: s.orderRateButton,
+          onRate: onRate,
+        ),
+
+        // Cancel يفضل ظاهر بس لو الطلب مش Completed
+        if (!order.isCompleted) ...[
+          const SizedBox(height: 20),
           _CancelSection(
             title: s.orderCancelSectionTitle,
             body: s.orderCancelSectionBody,
@@ -337,6 +340,7 @@ class _OrderDetailsBody extends StatelessWidget {
             loading: isCancelling,
             onCancel: onCancel,
           ),
+        ],
       ],
     );
   }

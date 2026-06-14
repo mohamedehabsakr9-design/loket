@@ -221,7 +221,7 @@ class _ProfileMenuScreenState extends State<ProfileMenuScreen> {
                     onTap: () async {
                       await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const SearchScreen()),
+                        MaterialPageRoute(builder: (_) => const EditProfileScreen()),
                       );
 
                       _loadProfile();

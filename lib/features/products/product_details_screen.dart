@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,7 @@ import '../../ai_try_on_preview_screen.dart';
 import '../../app/app_strings.dart';
 import '../../services/api_service.dart';
 import '../../services/wishlist_service.dart';
+import '../../widgets/product_card.dart';
 
 const String kBaseUrl = 'https://lokit-production.up.railway.app';
 
@@ -33,6 +35,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   bool    _wishLoading    = false;
   bool    _isInWishlist   = false;
 
+  final List<_LocalReview> _userReviews = [];
+
   // ── lifecycle ────────────────────────────────────────────────────────────
 
   @override
@@ -58,6 +62,25 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
     ));
+  }
+
+  Future<void> _showAddReviewSheet() async {
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+
+    final review = await showModalBottomSheet<_LocalReview>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AddReviewSheet(isArabic: isAr),
+    );
+
+    if (review == null || !mounted) return;
+
+    setState(() {
+      _userReviews.insert(0, review);
+    });
+
+    _snack(isAr ? 'تم إضافة رأيك' : 'Your review has been added');
   }
 
   // ── wishlist ──────────────────────────────────────────────────────────────
@@ -305,7 +328,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                       const SizedBox(height: 26),
 
                                       // Reviews
-                                      _ReviewsSection(s: s),
+                                      _ReviewsSection(
+                                        s: s,
+                                        userReviews: _userReviews,
+                                        onAddReview: _showAddReviewSheet,
+                                      ),
                                       const SizedBox(height: 28),
 
                                       // Recommended
@@ -663,93 +690,198 @@ class _ErrorView extends StatelessWidget {
 
 // ─── Image header ────────────────────────────────────────────────────────────
 
-class _ImageHeader extends StatelessWidget {
+class _ImageHeader extends StatefulWidget {
   final ProductDetailsData product;
   final double height;
   final PageController pageCtrl;
   final int imageIndex;
   final ValueChanged<int> onPageChanged;
 
-  const _ImageHeader({required this.product, required this.height,
-      required this.pageCtrl, required this.imageIndex, required this.onPageChanged});
+  const _ImageHeader({
+    required this.product,
+    required this.height,
+    required this.pageCtrl,
+    required this.imageIndex,
+    required this.onPageChanged,
+  });
+
+  @override
+  State<_ImageHeader> createState() => _ImageHeaderState();
+}
+
+class _ImageHeaderState extends State<_ImageHeader> {
+  Timer? _autoSlideTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startAutoSlide();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ImageHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final oldCount = oldWidget.product.imageUrls.length;
+    final newCount = widget.product.imageUrls.length;
+
+    if (oldCount != newCount) {
+      _startAutoSlide();
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoSlideTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoSlide() {
+    _autoSlideTimer?.cancel();
+
+    final imgs = widget.product.imageUrls;
+    if (imgs.length <= 1) return;
+
+    _autoSlideTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _goNext(auto: true),
+    );
+  }
+
+  void _goNext({bool auto = false}) {
+    final imgs = widget.product.imageUrls;
+    if (imgs.length <= 1) return;
+    if (!widget.pageCtrl.hasClients) return;
+
+    final nextIndex = widget.imageIndex >= imgs.length - 1
+        ? 0
+        : widget.imageIndex + 1;
+
+    widget.pageCtrl.animateToPage(
+      nextIndex,
+      duration: Duration(milliseconds: auto ? 450 : 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _goPrevious() {
+    final imgs = widget.product.imageUrls;
+    if (imgs.length <= 1) return;
+    if (!widget.pageCtrl.hasClients) return;
+
+    final previousIndex = widget.imageIndex <= 0
+        ? imgs.length - 1
+        : widget.imageIndex - 1;
+
+    widget.pageCtrl.animateToPage(
+      previousIndex,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final imgs = product.imageUrls;
-    return SizedBox(height: height, width: double.infinity,
-      child: Stack(fit: StackFit.expand, children: [
-        if (imgs.isEmpty)
-          _ImgPlaceholder(name: product.name)
-        else
-          PageView.builder(
-            controller: pageCtrl,
-            itemCount: imgs.length,
-            onPageChanged: onPageChanged,
-            itemBuilder: (_, i) => Image.network(imgs[i], fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _ImgPlaceholder(name: product.name)),
+    final imgs = widget.product.imageUrls;
+
+    return SizedBox(
+      height: widget.height,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (imgs.isEmpty)
+            _ImgPlaceholder(name: widget.product.name)
+          else
+            PageView.builder(
+              controller: widget.pageCtrl,
+              itemCount: imgs.length,
+              onPageChanged: widget.onPageChanged,
+              itemBuilder: (_, i) => Image.network(
+                imgs[i],
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    _ImgPlaceholder(name: widget.product.name),
+              ),
+            ),
+
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.04),
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.04),
+                ],
+              ),
+            ),
           ),
-        DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [Colors.black.withOpacity(0.04), Colors.transparent,
-                Colors.black.withOpacity(0.04)]))),
-        // Swipe arrows
-        if (imgs.length > 1) ...[
-          PositionedDirectional(
-            start: 12, top: 0, bottom: 0,
-            child: Center(
-              child: GestureDetector(
-                onTap: imageIndex > 0
-                    ? () => pageCtrl.animateToPage(
-                        imageIndex - 1,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut)
-                    : null,
-                child: AnimatedOpacity(
-                  opacity: imageIndex > 0 ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 200),
+
+          // Manual swipe arrows
+          if (imgs.length > 1) ...[
+            PositionedDirectional(
+              start: 12,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: GestureDetector(
+                  onTap: _goPrevious,
                   child: Container(
-                    width: 32, height: 32,
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.35),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 22),
+                    child: const Icon(
+                      Icons.chevron_left_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          PositionedDirectional(
-            end: 12, top: 0, bottom: 0,
-            child: Center(
-              child: GestureDetector(
-                onTap: imageIndex < imgs.length - 1
-                    ? () => pageCtrl.animateToPage(
-                        imageIndex + 1,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut)
-                    : null,
-                child: AnimatedOpacity(
-                  opacity: imageIndex < imgs.length - 1 ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 200),
+            PositionedDirectional(
+              end: 12,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: GestureDetector(
+                  onTap: _goNext,
                   child: Container(
-                    width: 32, height: 32,
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.35),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 22),
+                    child: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
+
+          // Dots indicator
+          if (imgs.length > 1)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 52,
+              child: _Dots(
+                count: imgs.length,
+                active: widget.imageIndex,
+              ),
+            ),
         ],
-        // Dots indicator
-        if (imgs.length > 1)
-          Positioned(left: 0, right: 0, bottom: 52,
-              child: _Dots(count: imgs.length, active: imageIndex)),
-      ]),
+      ),
     );
   }
 }
@@ -1003,58 +1135,441 @@ class _DescriptionSection extends StatelessWidget {
   ]);
 }
 
-// ─── Reviews (static placeholder) ────────────────────────────────────────────
+// ─── Reviews ────────────────────────────────────────────────────────────────
+
+class _LocalReview {
+  final String userName;
+  final String text;
+  final int rating;
+  final bool isUserReview;
+
+  const _LocalReview({
+    required this.userName,
+    required this.text,
+    required this.rating,
+    this.isUserReview = false,
+  });
+}
+
+class _AddReviewSheet extends StatefulWidget {
+  final bool isArabic;
+
+  const _AddReviewSheet({required this.isArabic});
+
+  @override
+  State<_AddReviewSheet> createState() => _AddReviewSheetState();
+}
+
+class _AddReviewSheetState extends State<_AddReviewSheet> {
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _reviewCtrl;
+
+  int _rating = 5;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController();
+    _reviewCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _reviewCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _nameCtrl.text.trim();
+    final text = _reviewCtrl.text.trim();
+
+    if (name.isEmpty || text.isEmpty) {
+      setState(() {
+        _error = widget.isArabic
+            ? 'من فضلك اكتب الاسم والرأي'
+            : 'Please enter your name and review';
+      });
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+
+    Navigator.of(context).pop(
+      _LocalReview(
+        userName: name,
+        text: text,
+        rating: _rating,
+        isUserReview: true,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAr = widget.isArabic;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Directionality(
+      textDirection: isAr ? TextDirection.rtl : TextDirection.ltr,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(22, 12, 22, 22),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE0E0E0),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    isAr ? 'أضف رأيك' : 'Add your review',
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    isAr
+                        ? 'شارك تجربتك مع المنتج وسيظهر رأيك بجانب باقي الآراء.'
+                        : 'Share your experience and it will appear next to the other reviews.',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.35,
+                      color: Color(0xFF777A80),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: _nameCtrl,
+                    textInputAction: TextInputAction.next,
+                    onChanged: (_) {
+                      if (_error != null) setState(() => _error = null);
+                    },
+                    decoration: InputDecoration(
+                      labelText: isAr ? 'الاسم' : 'Name',
+                      prefixIcon: const Icon(Icons.person_outline_rounded),
+                      filled: true,
+                      fillColor: const Color(0xFFF8F8F8),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _reviewCtrl,
+                    maxLines: 4,
+                    minLines: 3,
+                    textInputAction: TextInputAction.newline,
+                    onChanged: (_) {
+                      if (_error != null) setState(() => _error = null);
+                    },
+                    decoration: InputDecoration(
+                      labelText: isAr ? 'رأيك' : 'Your review',
+                      alignLabelWithHint: true,
+                      prefixIcon: const Padding(
+                        padding: EdgeInsets.only(bottom: 56),
+                        child: Icon(Icons.rate_review_outlined),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF8F8F8),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    isAr ? 'التقييم' : 'Rating',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: List.generate(5, (i) {
+                      final value = i + 1;
+                      final active = value <= _rating;
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () => setState(() => _rating = value),
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 4),
+                          child: Icon(
+                            active
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            color: const Color(0xFFFF8A00),
+                            size: 32,
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _submit,
+                      style: ElevatedButton.styleFrom(
+                        elevation: 0,
+                        backgroundColor: const Color(0xFF1D282E),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: Text(
+                        isAr ? 'إضافة الرأي' : 'Add Review',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ReviewsSection extends StatelessWidget {
   final AppStrings s;
-  const _ReviewsSection({required this.s});
+  final List<_LocalReview> userReviews;
+  final VoidCallback onAddReview;
+
+  const _ReviewsSection({
+    required this.s,
+    required this.userReviews,
+    required this.onAddReview,
+  });
 
   @override
   Widget build(BuildContext context) {
     final reviews = [
-      ('Ahmed Mahmoud', s.isArabic ? 'المنتج شكله أفضل في الحقيقة. شكراً لكم!' : 'The outfit looks even better in real life. Thank you!'),
-      ('Ahmed Mahmoud', s.isArabic ? 'الخامة ممتازة والمقاس مناسب جداً.' : 'The quality is great and the size fits perfectly.'),
+      ...userReviews,
+      _LocalReview(
+        userName: 'Ahmed Mahmoud',
+        text: s.isArabic
+            ? 'المنتج شكله أفضل في الحقيقة. شكراً لكم!'
+            : 'The outfit looks even better in real life. Thank you!',
+        rating: 5,
+      ),
+      _LocalReview(
+        userName: 'Ahmed Mahmoud',
+        text: s.isArabic
+            ? 'الخامة ممتازة والمقاس مناسب جداً.'
+            : 'The quality is great and the size fits perfectly.',
+        rating: 5,
+      ),
     ];
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(s.productReviewsTitle, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-      const SizedBox(height: 14),
-      SizedBox(height: 126, child: ListView.separated(
-        scrollDirection: Axis.horizontal, itemCount: reviews.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (_, i) => _ReviewCard(userName: reviews[i].$1, text: reviews[i].$2),
-      )),
-    ]);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                s.productReviewsTitle,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            InkWell(
+              onTap: onAddReview,
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D282E),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.add_rounded, color: Colors.white, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      s.isArabic ? 'أضف رأيك' : 'Add Review',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 116,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: reviews.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (_, i) => _ReviewCard(review: reviews[i]),
+          ),
+        ),
+      ],
+    );
   }
 }
 
 class _ReviewCard extends StatelessWidget {
-  final String userName, text;
-  const _ReviewCard({required this.userName, required this.text});
+  final _LocalReview review;
+
+  const _ReviewCard({required this.review});
+
   @override
-  Widget build(BuildContext context) => SizedBox(width: 220, child: Container(
-    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.045), blurRadius: 18, offset: const Offset(0, 8))]),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-      Row(children: [
-        CircleAvatar(radius: 16, backgroundColor: const Color(0xFFE9E9E9),
-            child: ClipOval(child: Image.network('https://i.pravatar.cc/80?img=12',
-                width: 32, height: 32, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 18, color: Colors.black54)))),
-        const SizedBox(width: 8),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(userName, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 2),
-          Row(children: List.generate(5, (_) =>
-              const Icon(Icons.star_rounded, color: Color(0xFFFF8A00), size: 10.5))),
-        ])),
-      ]),
-      const SizedBox(height: 7),
-      Flexible(child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 11.4, height: 1.22, color: Colors.black87, fontWeight: FontWeight.w500))),
-    ]),
-  ));
+  Widget build(BuildContext context) {
+    final initial = review.userName.trim().isEmpty
+        ? 'U'
+        : review.userName.trim()[0].toUpperCase();
+
+    return SizedBox(
+      width: 158,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 9),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(color: const Color(0xFFE8E8E8)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.035),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF1D282E),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    initial,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        review.userName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(
+                          5,
+                          (i) => Icon(
+                            i < review.rating
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            color: const Color(0xFFFF8A00),
+                            size: 10.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: Text(
+                review.text,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10.8,
+                  height: 1.25,
+                  color: Color(0xFF333333),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ─── Recommended ─────────────────────────────────────────────────────────────
@@ -1073,48 +1588,34 @@ class _RecommendedSection extends StatelessWidget {
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         itemCount: math.min(list.length, 4),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, crossAxisSpacing: 18, mainAxisSpacing: 16, childAspectRatio: 0.70),
-        itemBuilder: (_, i) => _MiniCard(product: list[i]),
+            crossAxisCount: 2, crossAxisSpacing: 18, mainAxisSpacing: 16, childAspectRatio: 0.52),
+        itemBuilder: (context, i) {
+          final product = list[i];
+
+          return ProductCard(
+            productId: product.id,
+            name: product.name.isEmpty ? 'Product' : product.name,
+            brand: product.brandName.isEmpty ? 'Brand' : product.brandName,
+            price: '${_fmt(product.price)} EGP',
+            imageUrl: product.imageUrl,
+            showWishlist: false,
+            onTap: product.id == 0
+                ? () {}
+                : () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ProductDetailsScreen(
+                          productId: product.id,
+                        ),
+                      ),
+                    );
+                  },
+          );
+        },
       ),
     ]);
   }
-}
-
-class _MiniCard extends StatelessWidget {
-  final ProductMiniData product;
-  const _MiniCard({required this.product});
-  @override
-  Widget build(BuildContext context) => InkWell(
-    borderRadius: BorderRadius.circular(18),
-    onTap: product.id == 0 ? null : () => Navigator.push(context,
-        MaterialPageRoute(builder: (_) => ProductDetailsScreen(productId: product.id))),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Expanded(child: Stack(children: [
-        ClipRRect(borderRadius: BorderRadius.circular(18),
-          child: Container(width: double.infinity, height: double.infinity,
-            color: const Color(0xFFE8EFF3),
-            child: product.imageUrl == null || product.imageUrl!.isEmpty
-                ? const Icon(Icons.image_outlined, color: Colors.black26, size: 32)
-                : Image.network(product.imageUrl!, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.image_outlined, color: Colors.black26, size: 32)),
-          )),
-        PositionedDirectional(top: 10, end: 10,
-          child: Container(width: 32, height: 32,
-            decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4))]),
-            child: const Icon(Icons.favorite_border_rounded, size: 19, color: Colors.black87))),
-      ])),
-      const SizedBox(height: 8),
-      Text(product.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 13, color: Colors.black, fontWeight: FontWeight.w600)),
-      const SizedBox(height: 2),
-      Text(product.brandName.isEmpty ? 'Brand' : product.brandName, maxLines: 1, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 11.5, color: Color(0xFF9A9A9A), fontWeight: FontWeight.w500)),
-      const SizedBox(height: 2),
-      Text('${_fmt(product.price)} EGP', maxLines: 1, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 13, color: Colors.black, fontWeight: FontWeight.w900)),
-    ]),
-  );
 }
 
 // ─── Floating buttons ────────────────────────────────────────────────────────
@@ -1129,7 +1630,7 @@ class _WishlistBtn extends StatelessWidget {
       child: SizedBox(width: 42, height: 42, child: Center(child: isLoading
           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
           : Icon(isActive ? Icons.favorite : Icons.favorite_border_rounded,
-              color: isActive ? Colors.red : Colors.black87, size: 24)))));
+              color: Colors.black87, size: 24)))));
 }
 
 class _CircleBtn extends StatelessWidget {

@@ -6,6 +6,7 @@ import '../../core/services/search_service.dart';
 import '../../services/api_service.dart';
 import '../products/product_details_screen.dart';
 import '../../widgets/lokit_bottom_nav_bar.dart';
+import '../../widgets/product_card.dart';
 
 const String _kBase = 'https://lokit-production.up.railway.app';
 
@@ -433,11 +434,34 @@ class _SearchScreenState extends State<SearchScreen> {
               itemCount: _results.length,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 0.58,
+                childAspectRatio: 0.52,
                 mainAxisSpacing: 14,
                 crossAxisSpacing: 14,
               ),
-              itemBuilder: (_, i) => _ProductCard(product: _results[i]),
+              itemBuilder: (_, i) {
+                  final product = _results[i];
+
+                  return ProductCard(
+                    productId: product.id,
+                    name: product.name.isEmpty ? 'Product' : product.name,
+                    brand: product.brandName.isEmpty ? 'Brand' : product.brandName,
+                    price: '${product.minPrice.toStringAsFixed(2)} EGP',
+                    imageUrl: _fullProductImageUrl(product.imageUrl),
+                    showWishlist: false,
+                    onTap: () {
+                      if (product.id == 0) return;
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProductDetailsScreen(
+                            productId: product.id,
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
             ),
           ),
         ],
@@ -649,118 +673,6 @@ class _RadioFilterChip extends StatelessWidget {
   }
 }
 
-class _ProductCard extends StatelessWidget {
-  final ProductSearchModel product;
-
-  const _ProductCard({required this.product});
-
-  @override
-  Widget build(BuildContext context) {
-    final img = _fullImg(product.imageUrl);
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(22),
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ProductDetailsScreen(productId: product.id),
-        ),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(22)),
-                  child: SizedBox(
-                    height: 160,
-                    width: double.infinity,
-                    child: img.isEmpty
-                        ? _placeholder()
-                        : Image.network(
-                            img,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _placeholder(),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product.brandName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      product.name,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        height: 1.3,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${product.minPrice.toStringAsFixed(2)} EGP',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _placeholder() {
-    return Container(
-      color: Colors.grey[200],
-      child: const Center(
-        child: Icon(Icons.image_outlined, color: Colors.grey),
-      ),
-    );
-  }
-
-  String _fullImg(String? url) {
-    if (url == null || url.isEmpty) return '';
-    if (url.startsWith('http')) return url;
-    if (url.startsWith('/')) return '$_kBase$url';
-    return '$_kBase/$url';
-  }
-}
-
 class _EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -809,6 +721,17 @@ String _str(dynamic v) {
   if (v == null) return '';
   final s = v.toString().trim();
   return s == 'null' ? '' : s;
+}
+
+
+String? _fullProductImageUrl(String? url) {
+  final value = url?.trim() ?? '';
+
+  if (value.isEmpty) return null;
+  if (value.startsWith('http')) return value;
+  if (value.startsWith('/')) return '$_kBase$value';
+
+  return '$_kBase/$value';
 }
 
 int _toInt(dynamic v) {
