@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../api/api_endpoints.dart';
 import '../models/product_search_model.dart';
 import '../../services/api_service.dart';
@@ -5,19 +7,22 @@ import '../../services/api_service.dart';
 class SearchService {
   Future<List<ProductSearchModel>> searchProducts({
     String? keyword,
+    int? departmentId,
     int? brandId,
     int? categoryId,
-    int? colorId,
-    int? sizeId,
     double? minPrice,
     double? maxPrice,
   }) async {
     final params = <String, dynamic>{};
 
-    final clean = keyword?.trim();
+    final cleanKeyword = keyword?.trim();
 
-    if (clean != null && clean.isNotEmpty) {
-      params['keyword'] = clean;
+    if (cleanKeyword != null && cleanKeyword.isNotEmpty) {
+      params['keyword'] = cleanKeyword;
+    }
+
+    if (departmentId != null && departmentId > 0) {
+      params['departmentId'] = departmentId;
     }
 
     if (brandId != null && brandId > 0) {
@@ -28,22 +33,19 @@ class SearchService {
       params['categoryId'] = categoryId;
     }
 
-    // colorId و sizeId dummy في الواجهة فقط
-    // لذلك لا يتم إرسالهم للباك إند عشان البحث يفضل يطلع نتائج
-    // if (colorId != null && colorId > 0) {
-    //   params['colorId'] = colorId;
-    // }
-    //
-    // if (sizeId != null && sizeId > 0) {
-    //   params['sizeId'] = sizeId;
-    // }
+    // colorId و sizeId مقصود إنهم مش موجودين هنا
+    // لأنهم UI فقط ومش بيتبعتوا للباك إند.
 
-    if (minPrice != null) {
+    if (minPrice != null && minPrice > 0) {
       params['minPrice'] = minPrice;
     }
 
-    if (maxPrice != null) {
+    if (maxPrice != null && maxPrice > 0) {
       params['maxPrice'] = maxPrice;
+    }
+
+    if (kDebugMode) {
+      debugPrint('SEARCH PARAMS: $params');
     }
 
     final data = await ApiService.get(
@@ -51,8 +53,18 @@ class SearchService {
       queryParameters: params,
     );
 
-    return _extractList(data)
-        .whereType<Map>()
+    if (kDebugMode) {
+      debugPrint('SEARCH RESPONSE: $data');
+    }
+
+    final list = _extractList(data);
+
+    if (kDebugMode) {
+      debugPrint('SEARCH LIST LENGTH: ${list.length}');
+    }
+
+    return list
+        .whereType<Map<dynamic, dynamic>>()
         .map(
           (e) => ProductSearchModel.fromJson(
             Map<String, dynamic>.from(e),
@@ -67,16 +79,28 @@ class SearchService {
     }
 
     if (data is Map) {
-      for (final k in [
+      const possibleKeys = [
         'content',
         'data',
         'products',
         'items',
         'result',
         'results',
-      ]) {
-        if (data[k] is List) {
-          return data[k] as List;
+      ];
+
+      for (final key in possibleKeys) {
+        final value = data[key];
+
+        if (value is List) {
+          return value;
+        }
+
+        if (value is Map) {
+          final nestedList = _extractList(value);
+
+          if (nestedList.isNotEmpty) {
+            return nestedList;
+          }
         }
       }
     }

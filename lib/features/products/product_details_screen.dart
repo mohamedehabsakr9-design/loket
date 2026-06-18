@@ -248,8 +248,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             final product = snap.data!;
             _selectedVariant ??= product.defaultVariantOrNull;
 
-            final price  = _selectedVariant?.price ?? product.basePrice;
-            final total  = price * _quantity;
             final imgH   = math.min(MediaQuery.of(context).size.height * 0.49, 430.0);
 
             // ── unique colors from variants (REAL data from backend) ────────
@@ -376,15 +374,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 PositionedDirectional(
                   top: MediaQuery.of(context).padding.top + 16,
                   end: 24,
-                  child: _CircleBtn(
-                    icon: Icons.accessibility_new_rounded,
-                    onTap: () => Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => AiTryOnPreviewScreen(productId: product.id))),
-                  ),
-                ),
-                PositionedDirectional(
-                  top: MediaQuery.of(context).padding.top + 68,
-                  end: 24,
                   child: _WishlistBtn(
                     isActive: _isInWishlist,
                     isLoading: _wishLoading,
@@ -396,10 +385,15 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: _BottomCartBar(
-                    total: total,
-                    totalLabel: s.productTotalPriceLabel,
+                    tryOnLabel: 'AI Try-On',
                     addLabel: s.productAddToCartButton,
                     isLoading: _cartLoading,
+                    onTryOn: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AiTryOnPreviewScreen(productId: product.id),
+                      ),
+                    ),
                     onAdd: () => _addToCart(product),
                   ),
                 ),
@@ -1648,45 +1642,120 @@ class _CircleBtn extends StatelessWidget {
 // ─── Bottom bar ───────────────────────────────────────────────────────────────
 
 class _BottomCartBar extends StatelessWidget {
-  final double total; final String totalLabel, addLabel;
-  final bool isLoading; final VoidCallback onAdd;
-  const _BottomCartBar({required this.total, required this.totalLabel,
-      required this.addLabel, required this.isLoading, required this.onAdd});
+  final String tryOnLabel, addLabel;
+  final bool isLoading;
+  final VoidCallback onTryOn, onAdd;
+
+  const _BottomCartBar({
+    required this.tryOnLabel,
+    required this.addLabel,
+    required this.isLoading,
+    required this.onTryOn,
+    required this.onAdd,
+  });
 
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
     padding: EdgeInsets.fromLTRB(24, 12, 24, MediaQuery.of(context).padding.bottom + 20),
-    decoration: BoxDecoration(color: Colors.white.withOpacity(0.97),
-        boxShadow: [BoxShadow(color: Colors.white.withOpacity(0.88), blurRadius: 20, offset: const Offset(0, -10))]),
-    child: Row(children: [
-      SizedBox(width: 116, child: Column(mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(totalLabel, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, color: Color(0xFFAAAAAA), fontWeight: FontWeight.w600)),
-        const SizedBox(height: 3),
-        Text('${_fmt(total)} EGP', maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 18, color: Colors.black, fontWeight: FontWeight.w900)),
-      ])),
-      const SizedBox(width: 12),
-      Expanded(child: SizedBox(height: 48, child: ElevatedButton(
-        onPressed: isLoading ? null : onAdd,
-        style: ElevatedButton.styleFrom(elevation: 0,
-            backgroundColor: const Color(0xFF1D282E),
-            disabledBackgroundColor: const Color(0xFF1D282E).withOpacity(0.55),
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-        child: isLoading
-            ? const SizedBox(width: 22, height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 18),
-                const SizedBox(width: 12),
-                Flexible(child: Text(addLabel, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white))),
-              ]),
-      ))),
-    ]),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.97),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.white.withOpacity(0.88),
+          blurRadius: 20,
+          offset: const Offset(0, -10),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 128,
+          height: 54,
+          child: OutlinedButton(
+            onPressed: onTryOn,
+            style: OutlinedButton.styleFrom(
+              elevation: 0,
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF1D282E),
+              side: const BorderSide(color: Color(0xFF1D282E), width: 1.2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.accessibility_new_rounded, size: 18),
+                const SizedBox(width: 7),
+                Flexible(
+                  child: Text(
+                    tryOnLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: SizedBox(
+            height: 54,
+            child: ElevatedButton(
+              onPressed: isLoading ? null : onAdd,
+              style: ElevatedButton.styleFrom(
+                elevation: 0,
+                backgroundColor: const Color(0xFF1D282E),
+                disabledBackgroundColor: const Color(0xFF1D282E).withOpacity(0.55),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.shopping_bag_outlined,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            addLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ],
+    ),
   );
 }
 

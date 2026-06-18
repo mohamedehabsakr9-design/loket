@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-// شاشات التطبيق
+
 import 'features/splash/splash_screen1.dart';
 import 'features/splash/splash_screen2.dart';
 import 'features/auth/sign_in_screen.dart' as auth;

@@ -60,9 +60,7 @@ class _SearchScreenState extends State<SearchScreen> {
   bool get _hasActiveFilters =>
       _selDeptId != null ||
       _selCatId != null ||
-      _selBrandId != null ||
-      _selColorId != null ||
-      _selSizeId != null;
+      _selBrandId != null;
 
   @override
   void initState() {
@@ -151,28 +149,11 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      final deptName = _selDeptId != null
-          ? _departments
-              .firstWhere(
-                (d) => d.id == _selDeptId,
-                orElse: () => _Opt(0, ''),
-              )
-              .name
-          : '';
-
-      final keyword = [
-        if (_query.trim().isNotEmpty) _query.trim(),
-        if (deptName.isNotEmpty) deptName,
-      ].join(' ');
-
       final r = await _searchSvc.searchProducts(
-        keyword: keyword.isEmpty ? null : keyword,
+        keyword: _query.trim().isEmpty ? null : _query.trim(),
+        departmentId: _selDeptId,
         brandId: _selBrandId,
         categoryId: _selCatId,
-
-        // Dummy UI فقط — مش بنبعتهم للباك
-        colorId: null,
-        sizeId: null,
       );
 
       if (!mounted) return;
@@ -334,8 +315,8 @@ class _SearchScreenState extends State<SearchScreen> {
                             options: _colors,
                             selectedId: _selColorId,
                             onSelected: (id) {
+                              // UI فقط — لا يتم إرسال اللون للباك إند ولا يعمل Search
                               setState(() => _selColorId = id);
-                              _search();
                             },
                           ),
                           const SizedBox(width: 8),
@@ -344,8 +325,8 @@ class _SearchScreenState extends State<SearchScreen> {
                             options: _sizes,
                             selectedId: _selSizeId,
                             onSelected: (id) {
+                              // UI فقط — لا يتم إرسال المقاس للباك إند ولا يعمل Search
                               setState(() => _selSizeId = id);
-                              _search();
                             },
                           ),
                         ],
